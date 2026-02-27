@@ -13,7 +13,7 @@ This repository contains the zero-knowledge proof system for ZkVanguard:
 
 ## Architecture
 
-`
+```
 zkp/
 ├── core/
 │   ├── true_stark.py      # Real STARK implementation
@@ -32,25 +32,25 @@ zk/
 │   └── ProofGenerator.ts  # TypeScript wrapper
 └── verifier/
     └── ProofValidator.ts  # TypeScript wrapper
-`
+```
 
 ## Usage
 
 ### Generate Proof
-`ash
+```bash
 python zkp/cli/generate_proof.py --input data.json --output proof.json
-`
+```
 
 ### Verify Proof
-`ash
+```bash
 python zkp/cli/verify_proof.py --proof proof.json
-`
+```
 
 ### API Server
-`ash
+```bash
 python zkp/api/server.py
 # POST /generate-proof, GET /verify-proof
-`
+```
 
 ## Security
 
