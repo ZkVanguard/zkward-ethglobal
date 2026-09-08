@@ -148,7 +148,7 @@ contract ZKProxyVault is
         __ReentrancyGuard_init();
         __Pausable_init();
         __AccessControl_init();
-        __UUPSUpgradeable_init();
+        // OZ v5 removed __UUPSUpgradeable_init (was a no-op); omit for compile.
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);

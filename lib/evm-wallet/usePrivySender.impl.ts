@@ -12,12 +12,13 @@
  */
 
 import { useCallback } from 'react';
-import { usePrivy, useSendTransaction } from '@privy-io/react-auth';
+import { usePrivy, useSendTransaction, useSignTypedData } from '@privy-io/react-auth';
 import type { PrivySender } from './usePrivySender';
 
 export function usePrivySenderReal(): PrivySender | null {
   const { authenticated, ready } = usePrivy();
   const { sendTransaction } = useSendTransaction();
+  const { signTypedData } = useSignTypedData();
 
   const send: PrivySender['sendTransaction'] = useCallback(async (tx) => {
     const result = await sendTransaction({
@@ -39,6 +40,19 @@ export function usePrivySenderReal(): PrivySender | null {
     return { hash: hash as `0x${string}` };
   }, [sendTransaction]);
 
+  const sign: PrivySender['signTypedData'] = useCallback(async (payload) => {
+    // Same return-shape variance as sendTransaction — normalise.
+    const result = await signTypedData(payload as never);
+    const sig =
+      typeof result === 'string'
+        ? result
+        : (result as { signature?: string })?.signature;
+    if (!sig || !/^0x[0-9a-fA-F]+$/.test(sig)) {
+      throw new Error('privy signTypedData returned no signature');
+    }
+    return sig as `0x${string}`;
+  }, [signTypedData]);
+
   if (!ready || !authenticated) return null;
-  return { sendTransaction: send };
+  return { sendTransaction: send, signTypedData: sign };
 }

@@ -685,7 +685,7 @@ contract CommunityPool is
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Pausable_init();
-        __UUPSUpgradeable_init();
+        // OZ v5 removed __UUPSUpgradeable_init (was a no-op); omit for compile.
 
         depositToken = IERC20(_depositToken);
         treasury = _treasury;

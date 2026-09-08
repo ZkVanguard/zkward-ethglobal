@@ -39,13 +39,26 @@ const SHARES_DECIMALS = 6;
 const HEDERA_ACCENT = '#00A79F';
 const ACCENT = '#0069D9';
 
-// SimpleUsdcVault ABI subset — deposit / withdraw / read helpers only.
+// SimpleUsdcVaultV2 ABI subset — deposit / depositWithPermit / withdraw / reads.
 const VAULT_ABI = [
   {
     name: 'deposit',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+  {
+    name: 'depositWithPermit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
+      { name: 'v', type: 'uint8' },
+      { name: 'r', type: 'bytes32' },
+      { name: 's', type: 'bytes32' },
+    ],
     outputs: [{ name: 'shares', type: 'uint256' }],
   },
   {
@@ -75,6 +88,25 @@ const VAULT_ABI = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'uint256' }],
+  },
+] as const;
+
+// EIP-2612 permit ABI on the USDC token — nonces + DOMAIN_SEPARATOR reads,
+// permit not needed on client (vault calls it internally in depositWithPermit).
+const PERMIT_TOKEN_ABI = [
+  {
+    name: 'nonces',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    name: 'name',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'string' }],
   },
 ] as const;
 
@@ -157,6 +189,17 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     query: { enabled: !!address },
   });
 
+  // EIP-2612 permit nonce — Privy-signer path needs this to build the
+  // typed message. Non-Privy users don't sign permits, so we only read
+  // when the Privy path is active.
+  const { data: permitNonce, refetch: refetchPermitNonce } = useReadContract({
+    address: usdc,
+    abi: PERMIT_TOKEN_ABI,
+    functionName: 'nonces',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isPrivySigner },
+  });
+
   // ─── Writes ─────────────────────────────────────────────────────────────
   const { writeContractAsync } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -210,52 +253,93 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     const APPROVE_AMOUNT = (2n ** 256n) - 1n;
 
     try {
+      // ─── Privy fast path: EIP-2612 permit → depositWithPermit ────
+      // Signs the permit off-chain (silent for Privy embedded wallets)
+      // and bundles it with the deposit into ONE on-chain tx. Total UX:
+      // one wallet confirmation instead of two.
+      if (isPrivySigner && privySender) {
+        setStatus('depositing');
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60); // +30min
+        const nonce = (permitNonce as bigint | undefined) ?? 0n;
+        const domain = {
+          name: 'USD Coin', // Must match token's ERC20Permit constructor name arg
+          version: '1',
+          chainId: HEDERA_TESTNET_ID,
+          verifyingContract: usdc,
+        };
+        const types = {
+          Permit: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+          ],
+        };
+        const message = {
+          owner: address,
+          spender: vault,
+          value: amountWei.toString(),
+          nonce: nonce.toString(),
+          deadline: deadline.toString(),
+        };
+        const signature = await privySender.signTypedData({
+          domain,
+          types,
+          primaryType: 'Permit',
+          message,
+        });
+        // Split 65-byte sig into r, s, v components.
+        const sig = signature.startsWith('0x') ? signature.slice(2) : signature;
+        const r = ('0x' + sig.slice(0, 64)) as `0x${string}`;
+        const s = ('0x' + sig.slice(64, 128)) as `0x${string}`;
+        const v = parseInt(sig.slice(128, 130), 16);
+
+        const permitData = encodeFunctionData({
+          abi: VAULT_ABI,
+          functionName: 'depositWithPermit',
+          args: [amountWei, deadline, v, r, s],
+        });
+        const hash = (await privySender.sendTransaction({
+          to: vault, data: permitData, chainId: HEDERA_TESTNET_ID,
+        })).hash;
+        setPendingHash(hash);
+        await refetchPermitNonce();
+        return;
+      }
+
+      // ─── Fallback: approve + deposit (MetaMask/injected users) ────
       if (have < need) {
         setStatus('approving');
-        const approveData = encodeFunctionData({
+        const approveHash = await writeContractAsync({
+          address: usdc,
           abi: erc20Abi,
           functionName: 'approve',
           args: [vault, APPROVE_AMOUNT],
+          chainId: HEDERA_TESTNET_ID,
         });
-        const approveHash = isPrivySigner && privySender
-          ? (await privySender.sendTransaction({ to: usdc, data: approveData, chainId: HEDERA_TESTNET_ID })).hash
-          : await writeContractAsync({
-              address: usdc,
-              abi: erc20Abi,
-              functionName: 'approve',
-              args: [vault, APPROVE_AMOUNT],
-              chainId: HEDERA_TESTNET_ID,
-            });
         setPendingHash(approveHash);
         // Wait for approve tx receipt before deposit — otherwise deposit
-        // will revert with allowance shortfall. Can't chain in one tx
-        // (would need Permit which MockERC20 doesn't support).
+        // reverts with allowance shortfall.
         await waitForTx(approveHash);
         await refetchAllowance();
       }
 
       setStatus('depositing');
-      const depositData = encodeFunctionData({
+      const depositHash = await writeContractAsync({
+        address: vault,
         abi: VAULT_ABI,
         functionName: 'deposit',
         args: [amountWei],
+        chainId: HEDERA_TESTNET_ID,
       });
-      const depositHash = isPrivySigner && privySender
-        ? (await privySender.sendTransaction({ to: vault, data: depositData, chainId: HEDERA_TESTNET_ID })).hash
-        : await writeContractAsync({
-            address: vault,
-            abi: VAULT_ABI,
-            functionName: 'deposit',
-            args: [amountWei],
-            chainId: HEDERA_TESTNET_ID,
-          });
       setPendingHash(depositHash);
     } catch (e) {
       setError(shortErr(e));
       setStatus('error');
       setPendingHash(null);
     }
-  }, [address, amount, allowance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance, isPrivySigner, privySender]);
+  }, [address, amount, allowance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance, isPrivySigner, privySender, permitNonce, refetchPermitNonce]);
 
   const onWithdraw = useCallback(async () => {
     setError(null);

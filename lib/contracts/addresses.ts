@@ -173,9 +173,13 @@ export const SEPOLIA_CONTRACT_ADDRESSES = {
 
 export const HEDERA_CONTRACT_ADDRESSES = {
   testnet: {
-    // Hedera Testnet (Chain ID: 296) — SimpleUsdcVault deployed 2026-09-06.
-    communityPool: '0xe7E6fEDce9d72D112137B631E8D51831D30729A9' as `0x${string}`,
-    usdtToken: '0x704365B35AeF0b7F9fc17c18B5162D4A6d600ae1' as `0x${string}`, // Test USDC (6 dec, mintable)
+    // Hedera Testnet (Chain ID: 296) — SimpleUsdcVaultV2 (permit-enabled)
+    // deployed 2026-09-08. V2 supports depositWithPermit for single-popup
+    // deposits via Privy embedded wallets. Old V1 pool at 0xe7E6…9A9 is
+    // dormant but on-chain. Old USDC at 0x7043…ae1 has no permit — do not
+    // reuse; the new USDC's mint() still funds the faucet the same way.
+    communityPool: '0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88' as `0x${string}`,
+    usdtToken: '0xe40AbC51A100Fa19B5CddEea637647008Eb0eA0b' as `0x${string}`, // MockERC20Permit (6 dec, mintable, EIP-2612)
     pythOracle: '0xA2aa501b19aff244D90cc15a4Cf739D2725B5729' as `0x${string}`,
     zkVerifier: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     rwaManager: '0x0000000000000000000000000000000000000000' as `0x${string}`,

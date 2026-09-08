@@ -212,7 +212,7 @@ contract HedgeExecutorV2 is
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Pausable_init();
-        __UUPSUpgradeable_init();
+        // OZ v5 removed __UUPSUpgradeable_init (was a no-op); omit for compile.
 
         collateralToken = IERC20(_collateralToken);
         moonlanderRouter = _moonlanderRouter;
