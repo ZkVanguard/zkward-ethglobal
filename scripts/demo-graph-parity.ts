@@ -116,7 +116,7 @@ async function main() {
   console.log(`  Endpoint:  ${HEDERA_URL}`);
   console.log(`  Latency:   ${hederaMs}ms`);
   console.log(`  Backend:   Hedera Mirror Node (bridges Hedera into Graph tooling)`);
-  console.log(`  Contract:  0xe7E6fEDce9d72D112137B631E8D51831D30729A9 (SimpleUsdcVault)`);
+  console.log(`  Contract:  0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88 (SimpleUsdcVaultV2 + permit)`);
   console.log(`  Meta:      block ${hedera.data?._meta?.block?.number ?? '—'}, hasIndexingErrors=${hedera.data?._meta?.hasIndexingErrors ?? '—'}`);
   console.log(`  Pools:     ${hedera.data?.pools?.length ?? 0}`);
   if (hedera.data?.pools?.length) {

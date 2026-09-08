@@ -18,8 +18,8 @@ const NETWORK = 'testnet';
 const MIRROR = 'https://testnet.mirrornode.hedera.com/api/v1';
 const BASE_URL = (process.env.BASE_URL || 'https://www.zkward.com').replace(/\/$/, '');
 
-const VAULT = '0xe7E6fEDce9d72D112137B631E8D51831D30729A9';
-const TEST_USDC = '0x704365B35AeF0b7F9fc17c18B5162D4A6d600ae1';
+const VAULT = '0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88';
+const TEST_USDC = '0xe40AbC51A100Fa19B5CddEea637647008Eb0eA0b';
 const OPERATOR_ID = '0.0.7132683';
 const AUDIT_TOPIC = '0.0.10393879';
 const REGISTRY_TOPIC = '0.0.10401316';

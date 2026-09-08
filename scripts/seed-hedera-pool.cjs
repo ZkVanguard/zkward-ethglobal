@@ -21,8 +21,8 @@
 const { ethers } = require('ethers');
 
 const RPC = process.env.HEDERA_TESTNET_RPC_URL || 'https://testnet.hashio.io/api';
-const USDC = '0x704365B35AeF0b7F9fc17c18B5162D4A6d600ae1';
-const VAULT = '0xe7E6fEDce9d72D112137B631E8D51831D30729A9';
+const USDC = '0xe40AbC51A100Fa19B5CddEea637647008Eb0eA0b';
+const VAULT = '0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88';
 const USDC_DECIMALS = 6;
 
 // Sequence: 5 deposits, 2 yield injections, 2 withdrawals.

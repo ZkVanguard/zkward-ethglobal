@@ -51,7 +51,7 @@ const SCENARIOS: Scenario[] = [
     description: 'Prove the AI rebalanced allocations following the platform\'s rules (max ±20% drift, no single asset >50%).',
     scenario: 'allocation-rebalance',
     statement: {
-      pool: '0xe7E6fEDce9d72D112137B631E8D51831D30729A9',
+      pool: '0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88',
       newTargets: { BTC: 30, ETH: 30, SUI: 30, USDC: 10 },
       driftBps: 450,
     },

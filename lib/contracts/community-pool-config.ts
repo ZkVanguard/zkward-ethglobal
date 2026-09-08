@@ -161,13 +161,13 @@ export const POOL_CHAIN_CONFIGS: Record<string, PoolChainConfig> = {
     },
     contracts: {
       testnet: {
-        // SimpleUsdcVault deployed 2026-09-06 with fresh MockERC20 USDC
-        // (contracts/core/SimpleUsdcVault.sol). Replaces the earlier
-        // uninitialised community pool at 0xfd6B402b8... (depositToken=0x0
-        // meant it could never accept a deposit). This one has 10k USDC
-        // pre-minted to the operator wallet for demo funding.
-        communityPool: '0xe7E6fEDce9d72D112137B631E8D51831D30729A9',
-        usdt: '0x704365B35AeF0b7F9fc17c18B5162D4A6d600ae1', // Test USDC (6 decimals, mintable)
+        // SimpleUsdcVaultV2 + MockERC20Permit (EIP-2612) deployed
+        // 2026-09-08. V2 adds depositWithPermit() so Privy embedded
+        // wallets can deposit in a SINGLE popup instead of two.
+        // Old V1 (0xe7E6…9A9) + old USDC (0x7043…ae1) remain on-chain
+        // but are no longer the primary target.
+        communityPool: '0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88',
+        usdt: '0xe40AbC51A100Fa19B5CddEea637647008Eb0eA0b', // MockERC20Permit (6 dec, mintable, EIP-2612)
         pythOracle: '0xA2aa501b19aff244D90cc15a4Cf739D2725B5729', // Pyth on Hedera testnet
       },
       mainnet: {
