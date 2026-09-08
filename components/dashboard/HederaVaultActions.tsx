@@ -146,6 +146,10 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
   const [status, setStatus] = useState<'idle' | 'switching' | 'approving' | 'depositing' | 'withdrawing' | 'complete' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [pendingHash, setPendingHash] = useState<`0x${string}` | null>(null);
+  // Keep the last successful tx hash visible after confirmation so users can
+  // still click through to HashScan. pendingHash is nulled on confirm; this
+  // survives the reset and clears when a new tx starts or after 30s.
+  const [lastSuccessTx, setLastSuccessTx] = useState<`0x${string}` | null>(null);
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetTx, setFaucetTx] = useState<string | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
@@ -215,9 +219,11 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     onRefresh?.();
     setStatus('complete');
     setAmount('');
+    setLastSuccessTx(pendingHash);
     setPendingHash(null);
-    const t = setTimeout(() => setStatus('idle'), 3000);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => setStatus('idle'), 5000);
+    const clr = setTimeout(() => setLastSuccessTx(null), 30_000);
+    return () => { clearTimeout(t); clearTimeout(clr); };
   }, [isConfirmed, pendingHash, refetchBalance, refetchShares, refetchAllowance, onRefresh]);
 
   // ─── Actions ───────────────────────────────────────────────────────────
@@ -381,9 +387,13 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     : 1;
   const userValueUsdc = humanShares * sharePrice;
 
+  // Show HashScan link for in-flight tx OR the last successful one so users
+  // can always click through to confirm on-chain finality.
   const explorer = pendingHash
     ? `https://hashscan.io/testnet/transaction/${pendingHash}`
-    : null;
+    : lastSuccessTx
+      ? `https://hashscan.io/testnet/transaction/${lastSuccessTx}`
+      : null;
 
   const chainMismatch = address && chainId !== HEDERA_TESTNET_ID && status === 'idle';
 
@@ -582,6 +592,31 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             </div>
             {disabledReason && (
               <div className="text-[11px] text-label-tertiary">{disabledReason}</div>
+            )}
+            {/* Post-confirm success card — surfaces the tx hash + HashScan link
+                prominently so users see on-chain proof, not just "You're all set". */}
+            {status === 'complete' && lastSuccessTx && (
+              <div className="mt-2 p-3 rounded-[10px] bg-[#34C759]/10 border border-[#34C759]/30">
+                <div className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-green-700 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0 text-[12px]">
+                    <div className="font-medium text-green-700">
+                      {mode === 'deposit' ? 'Deposit' : 'Withdrawal'} confirmed on Hedera
+                    </div>
+                    <div className="mt-0.5 text-label-secondary break-all font-mono text-[11px]">
+                      {lastSuccessTx.slice(0, 18)}…{lastSuccessTx.slice(-16)}
+                    </div>
+                    <a
+                      href={`https://hashscan.io/testnet/transaction/${lastSuccessTx}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-[#0069D9] hover:underline text-[11px] font-medium"
+                    >
+                      View on HashScan <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         );
