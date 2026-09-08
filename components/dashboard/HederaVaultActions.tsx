@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { parseUnits, formatUnits, erc20Abi } from 'viem';
+import { parseUnits, formatUnits, erc20Abi, encodeFunctionData } from 'viem';
 import {
   useAccount,
   useChainId,
@@ -28,6 +28,8 @@ import {
 import { Plus, Minus, Loader2, Check, ExternalLink, AlertTriangle, Wallet, Droplets, Copy } from 'lucide-react';
 import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
 import { hederaTestnet } from '@/lib/evm-wallet/wagmi-config';
+import { usePrivyEmbeddedAddress } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
+import { usePrivySender } from '@/lib/evm-wallet/usePrivySender';
 
 const HEDERA_TESTNET_ID = 296;
 const USDC_DECIMALS = 6;
@@ -91,6 +93,18 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
   const chainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const address = (propAddress ?? wagmiAddress) as `0x${string}` | undefined;
+
+  // Privy path — when the "from" address IS the user's Privy embedded
+  // wallet, sign via Privy's useSendTransaction so wagmi's active
+  // connector (which is MetaMask when both are connected) doesn't hijack
+  // the prompt. Falls back to wagmi writeContract when the address is
+  // MetaMask/injected or when Privy isn't enabled.
+  const privyEmbeddedAddress = usePrivyEmbeddedAddress();
+  const privySender = usePrivySender();
+  const isPrivySigner = !!privyEmbeddedAddress
+    && !!privySender
+    && !!address
+    && address.toLowerCase() === privyEmbeddedAddress.toLowerCase();
 
   const usdc = HEDERA_CONTRACT_ADDRESSES.testnet.usdtToken as `0x${string}`;
   const vault = HEDERA_CONTRACT_ADDRESSES.testnet.communityPool as `0x${string}`;
@@ -197,38 +211,50 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
       // if the vault is ever compromised).
       if (have < need) {
         setStatus('approving');
-        const approveHash = await writeContractAsync({
-          address: usdc,
+        const approveData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
           args: [vault, need],
-          chainId: HEDERA_TESTNET_ID,
         });
+        const approveHash = isPrivySigner && privySender
+          ? (await privySender.sendTransaction({ to: usdc, data: approveData, chainId: HEDERA_TESTNET_ID })).hash
+          : await writeContractAsync({
+              address: usdc,
+              abi: erc20Abi,
+              functionName: 'approve',
+              args: [vault, need],
+              chainId: HEDERA_TESTNET_ID,
+            });
         setPendingHash(approveHash);
         // Wait for approve tx receipt before deposit — otherwise deposit
         // will revert with allowance shortfall. We can't chain the two
         // in one tx (would need Permit which MockERC20 doesn't support).
-        // The effect below will fire when isConfirmed → we manually
-        // fall through to deposit here after waiting inline.
         await waitForTx(approveHash);
         await refetchAllowance();
       }
 
       setStatus('depositing');
-      const depositHash = await writeContractAsync({
-        address: vault,
+      const depositData = encodeFunctionData({
         abi: VAULT_ABI,
         functionName: 'deposit',
         args: [amountWei],
-        chainId: HEDERA_TESTNET_ID,
       });
+      const depositHash = isPrivySigner && privySender
+        ? (await privySender.sendTransaction({ to: vault, data: depositData, chainId: HEDERA_TESTNET_ID })).hash
+        : await writeContractAsync({
+            address: vault,
+            abi: VAULT_ABI,
+            functionName: 'deposit',
+            args: [amountWei],
+            chainId: HEDERA_TESTNET_ID,
+          });
       setPendingHash(depositHash);
     } catch (e) {
       setError(shortErr(e));
       setStatus('error');
       setPendingHash(null);
     }
-  }, [address, amount, allowance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance]);
+  }, [address, amount, allowance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance, isPrivySigner, privySender]);
 
   const onWithdraw = useCallback(async () => {
     setError(null);
@@ -242,19 +268,26 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     const sharesWei = parseUnits(amount, SHARES_DECIMALS);
     try {
       setStatus('withdrawing');
-      const hash = await writeContractAsync({
-        address: vault,
+      const withdrawData = encodeFunctionData({
         abi: VAULT_ABI,
         functionName: 'withdraw',
         args: [sharesWei],
-        chainId: HEDERA_TESTNET_ID,
       });
+      const hash = isPrivySigner && privySender
+        ? (await privySender.sendTransaction({ to: vault, data: withdrawData, chainId: HEDERA_TESTNET_ID })).hash
+        : await writeContractAsync({
+            address: vault,
+            abi: VAULT_ABI,
+            functionName: 'withdraw',
+            args: [sharesWei],
+            chainId: HEDERA_TESTNET_ID,
+          });
       setPendingHash(hash);
     } catch (e) {
       setError(shortErr(e));
       setStatus('error');
     }
-  }, [address, amount, ensureHederaChain, vault, writeContractAsync]);
+  }, [address, amount, ensureHederaChain, vault, writeContractAsync, isPrivySigner, privySender]);
 
   const onFaucet = useCallback(async () => {
     if (!address) return;
