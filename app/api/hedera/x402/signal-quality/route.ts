@@ -47,23 +47,20 @@ export const maxDuration = 15;
 interface X402PaymentRequirements {
   scheme: 'exact';
   network: 'hedera:testnet' | 'hedera:mainnet';
-  amount: string;              // stringified 6-decimal micros for USDC
-  asset: string;               // token ID (HTS format 0.0.NNN on Hedera)
-  payTo: string;               // Hedera account ID or EVM address
+  maxAmountRequired: string;   // stringified 6-decimal micros for USDC (v1 field name)
+  resource: string;            // URL string
+  description: string;
+  mimeType?: string;
+  outputSchema?: Record<string, unknown>;
+  payTo: string;
   maxTimeoutSeconds: number;
+  asset: string;               // token ID (HTS format 0.0.NNN on Hedera)
   extra?: Record<string, unknown>;
 }
 
 interface X402PaymentIntent {
-  x402Version: 2;
+  x402Version: 1;
   error: string;
-  resource: {
-    url: string;
-    description?: string;
-    mimeType?: string;
-    serviceName?: string;
-    tags?: string[];
-  };
   accepts: X402PaymentRequirements[];
   // Non-spec extras we keep for our own tooling (probe scripts, judges dashboard)
   facilitator: string;
@@ -192,27 +189,40 @@ function buildIntent(request: NextRequest): X402PaymentIntent {
   const url = new URL(request.url);
   const network = getNetwork();
   const asset = network === 'hedera:mainnet' ? HEDERA_MAINNET_USDC : HEDERA_TESTNET_USDC;
+  // Emit x402 v1 shape in the body. @x402/fetch's getPaymentRequiredResponse
+  // only accepts v1 in the body; v2 requires a PAYMENT-REQUIRED header. V1
+  // still validates against the facilitator's /verify and works with the
+  // official @x402/fetch client. When we upgrade to the header-based v2
+  // approach later, the on-chain contract stays the same.
   return {
-    x402Version: 2,
+    x402Version: 1,
     error: 'payment required',
-    resource: {
-      url: url.toString(),
-      description: 'Signal-quality inference — one call, one asset',
-      mimeType: 'application/json',
-      serviceName: 'zkward-signal-quality',
-      tags: ['ai', 'signal', 'hedera'],
-    },
     accepts: [{
       scheme: 'exact',
       network,
-      amount: getPriceMicros(),
-      asset,
+      maxAmountRequired: getPriceMicros(),
+      resource: url.toString(),
+      description: 'Signal-quality inference — one call, one asset',
+      mimeType: 'application/json',
       payTo: getPayTo(),
       maxTimeoutSeconds: 300,
+      asset,
+      outputSchema: {
+        type: 'object',
+        properties: {
+          asset: { type: 'string' },
+          signal: { type: 'string', enum: ['BULLISH', 'BEARISH', 'NEUTRAL'] },
+          confidence: { type: 'number', minimum: 0, maximum: 100 },
+          reasoning: { type: 'string' },
+          window: { type: 'string' },
+          source: { type: 'string' },
+        },
+      },
       extra: {
         priceModel: 'per-call',
         signalWindow: '5min',
         currency: 'USDC',
+        serviceName: 'zkward-signal-quality',
       },
     }],
     facilitator: getFacilitator(network),

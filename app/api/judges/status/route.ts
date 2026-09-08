@@ -113,7 +113,7 @@ async function checkX402Intent(origin: string): Promise<CheckResult> {
     // x402 v2 spec shape: { x402Version, error, resource, accepts: [{scheme, network, amount, asset, payTo, ...}], facilitator }
     const j = await r.json() as {
       x402Version?: number;
-      accepts?: Array<{ payTo?: string; amount?: string; asset?: string; network?: string }>;
+      accepts?: Array<{ payTo?: string; maxAmountRequired?: string; asset?: string; network?: string }>;
       facilitator?: string;
     };
     const req = j.accepts?.[0];
@@ -124,7 +124,7 @@ async function checkX402Intent(origin: string): Promise<CheckResult> {
     id: 'x402-intent',
     label: 'x402 endpoint returns 402 with valid intent',
     ok: !!t.value,
-    detail: t.value ? `pays to ${t.value.payTo?.slice(0, 10)}… via ${t.value.facilitator}, ${t.value.amount} micros of ${t.value.asset}` : t.error ?? 'unknown',
+    detail: t.value ? `pays to ${t.value.payTo?.slice(0, 10)}… via ${t.value.facilitator}, ${t.value.maxAmountRequired} micros of ${t.value.asset}` : t.error ?? 'unknown',
     link: `${origin}/api/hedera/x402/signal-quality?asset=BTC`,
     latencyMs: t.latencyMs,
   };
