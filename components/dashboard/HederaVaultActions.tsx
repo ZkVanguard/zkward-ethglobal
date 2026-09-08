@@ -150,6 +150,10 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
   // still click through to HashScan. pendingHash is nulled on confirm; this
   // survives the reset and clears when a new tx starts or after 30s.
   const [lastSuccessTx, setLastSuccessTx] = useState<`0x${string}` | null>(null);
+  // Amount + action kind for the success card — surfaces "Deposited 100 USDC"
+  // instead of "Complete" so the user has explicit dollar/action context.
+  const [lastSuccessAmount, setLastSuccessAmount] = useState<string | null>(null);
+  const [lastSuccessKind, setLastSuccessKind] = useState<'approve' | 'deposit' | 'withdraw' | null>(null);
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetTx, setFaucetTx] = useState<string | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
@@ -217,14 +221,27 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     refetchShares();
     refetchAllowance();
     onRefresh?.();
+    // Snapshot the current status BEFORE we flip it to 'complete' so the
+    // success card knows whether this was approve / deposit / withdraw.
+    const kind: 'approve' | 'deposit' | 'withdraw' | null =
+      status === 'approving' ? 'approve'
+      : status === 'depositing' ? 'deposit'
+      : status === 'withdrawing' ? 'withdraw'
+      : null;
+    setLastSuccessKind(kind);
+    setLastSuccessAmount(amount || null);
     setStatus('complete');
     setAmount('');
     setLastSuccessTx(pendingHash);
     setPendingHash(null);
     const t = setTimeout(() => setStatus('idle'), 5000);
-    const clr = setTimeout(() => setLastSuccessTx(null), 30_000);
+    const clr = setTimeout(() => {
+      setLastSuccessTx(null);
+      setLastSuccessAmount(null);
+      setLastSuccessKind(null);
+    }, 30_000);
     return () => { clearTimeout(t); clearTimeout(clr); };
-  }, [isConfirmed, pendingHash, refetchBalance, refetchShares, refetchAllowance, onRefresh]);
+  }, [isConfirmed, pendingHash, refetchBalance, refetchShares, refetchAllowance, onRefresh, status, amount]);
 
   // ─── Actions ───────────────────────────────────────────────────────────
   const ensureHederaChain = useCallback(async (): Promise<boolean> => {
@@ -275,7 +292,13 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
         // "Cannot destructure property 'method' of 'o.signMessage'" (chunk
         // 3263). Approve+deposit is 2 popups but works reliably.
         const approveHash = isPrivySigner && privySender
-          ? (await privySender.sendTransaction({ to: usdc, data: approveData, chainId: HEDERA_TESTNET_ID })).hash
+          ? (await privySender.sendTransaction({
+              to: usdc,
+              data: approveData,
+              chainId: HEDERA_TESTNET_ID,
+              title: `Approve ${amount} USDC`,
+              description: `One-time approval so ZkWard's Hedera pool can pull USDC for future deposits. Approving unlimited USDC to ${vault.slice(0, 8)}…${vault.slice(-4)}.`,
+            })).hash
           : await writeContractAsync({
               address: usdc,
               abi: erc20Abi,
@@ -295,7 +318,13 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
         args: [amountWei],
       });
       const depositHash = isPrivySigner && privySender
-        ? (await privySender.sendTransaction({ to: vault, data: depositData, chainId: HEDERA_TESTNET_ID })).hash
+        ? (await privySender.sendTransaction({
+            to: vault,
+            data: depositData,
+            chainId: HEDERA_TESTNET_ID,
+            title: `Deposit ${amount} USDC into ZkWard`,
+            description: `Deposits ${amount} USDC into the Hedera community pool. You receive shares proportional to the pool's current NAV.`,
+          })).hash
         : await writeContractAsync({
             address: vault,
             abi: VAULT_ABI,
@@ -329,7 +358,13 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
         args: [sharesWei],
       });
       const hash = isPrivySigner && privySender
-        ? (await privySender.sendTransaction({ to: vault, data: withdrawData, chainId: HEDERA_TESTNET_ID })).hash
+        ? (await privySender.sendTransaction({
+            to: vault,
+            data: withdrawData,
+            chainId: HEDERA_TESTNET_ID,
+            title: `Withdraw ${amount} shares from ZkWard`,
+            description: `Burns ${amount} pool shares and returns the proportional USDC to your wallet.`,
+          })).hash
         : await writeContractAsync({
             address: vault,
             abi: VAULT_ABI,
@@ -593,15 +628,21 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             {disabledReason && (
               <div className="text-[11px] text-label-tertiary">{disabledReason}</div>
             )}
-            {/* Post-confirm success card — surfaces the tx hash + HashScan link
-                prominently so users see on-chain proof, not just "You're all set". */}
+            {/* Post-confirm success card — surfaces amount + tx hash + HashScan
+                link prominently so users see WHAT they did AND on-chain proof. */}
             {status === 'complete' && lastSuccessTx && (
               <div className="mt-2 p-3 rounded-[10px] bg-[#34C759]/10 border border-[#34C759]/30">
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-700 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0 text-[12px]">
                     <div className="font-medium text-green-700">
-                      {mode === 'deposit' ? 'Deposit' : 'Withdrawal'} confirmed on Hedera
+                      {lastSuccessKind === 'approve' && lastSuccessAmount
+                        ? `Approved ${lastSuccessAmount} USDC — depositing next`
+                        : lastSuccessKind === 'deposit' && lastSuccessAmount
+                          ? `Deposited ${lastSuccessAmount} USDC into the pool`
+                          : lastSuccessKind === 'withdraw' && lastSuccessAmount
+                            ? `Withdrew ${lastSuccessAmount} shares from the pool`
+                            : 'Transaction confirmed on Hedera'}
                     </div>
                     <div className="mt-0.5 text-label-secondary break-all font-mono text-[11px]">
                       {lastSuccessTx.slice(0, 18)}…{lastSuccessTx.slice(-16)}

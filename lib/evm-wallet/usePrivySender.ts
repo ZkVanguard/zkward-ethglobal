@@ -29,17 +29,11 @@ export interface PrivySender {
     data?: `0x${string}`;
     value?: `0x${string}`;
     chainId: number;
+    /** Human-readable label rendered in the wallet prompt UI ("Deposit 100 USDC…"). */
+    title?: string;
+    /** Longer description shown alongside the tx details. */
+    description?: string;
   }) => Promise<{ hash: `0x${string}` }>;
-  /**
-   * Sign an EIP-712 typed message with the Privy embedded wallet. Used
-   * for EIP-2612 permit → single-popup vault deposits.
-   */
-  signTypedData: (payload: {
-    domain: Record<string, unknown>;
-    types: Record<string, unknown>;
-    primaryType: string;
-    message: Record<string, unknown>;
-  }) => Promise<`0x${string}`>;
 }
 
 export function usePrivySender(): PrivySender | null {
