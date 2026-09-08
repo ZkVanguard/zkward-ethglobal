@@ -13,8 +13,9 @@
  *   4. POST https://api.blocky402.com/verify with a well-formed
  *      but unsigned payload → shows the facilitator IS reachable
  *      at the verify endpoint; expected rejection because we have
- *      no EIP-3009 signature. Proves the integration surface is
- *      live even without funded USDC.
+ *      no Hedera-native signed payment envelope. Proves the
+ *      integration surface is live even without a funded Hedera
+ *      mainnet account.
  *
  * Run:
  *   bun run scripts/probe-blocky402.ts
@@ -84,20 +85,22 @@ async function main() {
   console.log('\n[3/4] Shape-check intent against facilitator /supported');
   const facMatch = intent.facilitator === FACILITATOR;
   const schemeMatch = intent.scheme === 'exact';
-  // Note: our intent uses hedera:testnet by default; facilitator advertises hedera:mainnet on /supported.
-  // Both are valid within the x402 v2 spec — the facilitator supports both networks even though the
-  // default advertisement highlights mainnet. Mark this as INFO, not a failure.
+  // /supported is the authoritative list of networks Blocky402 will
+  // accept. As of 2026-09-08 the facilitator advertises hedera:mainnet
+  // ONLY — hedera:testnet is not in /supported.kinds, so an enabled
+  // paid call with intent.network=hedera:testnet will fail on network
+  // mismatch. Mark testnet as a HARD failure, not INFO.
   const networkAdvertised = (supported.kinds ?? []).some((k) => k.network === intent.network);
   console.log(`      · facilitator URL matches:       ${facMatch ? '✓' : '✗'}`);
   console.log(`      · scheme = "exact":              ${schemeMatch ? '✓' : '✗'}`);
-  console.log(`      · intent.network in /supported:  ${networkAdvertised ? '✓' : `info — /supported advertises ${supported.kinds?.[0]?.network ?? '?'} by default; intent.network=${intent.network} is still x402-v2 valid`}`);
+  console.log(`      · intent.network in /supported:  ${networkAdvertised ? '✓' : `✗ facilitator advertises [${(supported.kinds ?? []).map((k) => k.network).join(', ')}]; intent.network=${intent.network} will be rejected`}`);
 
   // 4. POST /verify with a well-formed request but unsigned payload
   console.log('\n[4/4] POST https://api.blocky402.com/verify (correct shape, unsigned payload)');
   console.log('      Expected: facilitator responds with "Invalid payment header format"');
-  console.log('      because we sent \'dGVzdA==\' instead of an EIP-3009 signature.');
+  console.log('      because we sent \'dGVzdA==\' instead of a Hedera-native signed payment envelope.');
   console.log('      This proves we hit the RIGHT endpoint with the RIGHT shape —');
-  console.log('      the last mile is client-side signing over funded USDC.');
+  console.log('      the last mile is client-side Hedera transaction signing.');
   const v0 = Date.now();
   const vr = await fetch(`${FACILITATOR}/verify`, {
     method: 'POST',
@@ -127,12 +130,13 @@ async function main() {
   console.log(line('═'));
   console.log('  Takeaway');
   console.log(line('═'));
-  console.log('  ✓ Blocky402 /supported reachable, advertises hedera:* signers');
+  console.log('  ✓ Blocky402 /supported reachable, advertises hedera:mainnet + feePayer sponsor 0.0.10571514');
   console.log('  ✓ Our x402 endpoint returns 402 + intent matching facilitator contract');
-  console.log('  ✓ Blocky402 /verify reachable — real settlement rail is one signed EIP-3009 payment away');
+  console.log('  ✓ Blocky402 /verify reachable — real settlement rail is one Hedera-native signed payment away');
   console.log('  · Live paid path today runs in stub mode (X402_FACILITATOR_ENABLED=0)');
-  console.log('    so judges can hit the endpoint without funded testnet USDC. Toggle to 1 + sign');
-  console.log('    a real EIP-3009 authorisation to flip verification.mode to "blocky402".');
+  console.log('    so judges can hit the endpoint without a funded Hedera mainnet account. Toggle to 1');
+  console.log('    + submit a Hedera-native signed payment envelope to flip verification.mode to "blocky402".');
+  console.log('  · NOT EIP-3009 — Blocky402 uses Hedera-native signing with feePayer sponsor pattern.');
   console.log(line('═'));
 }
 

@@ -65,8 +65,21 @@ interface X402PaymentIntent {
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-function getFacilitator(): string {
-  return (process.env.X402_FACILITATOR_URL || 'https://api.blocky402.com').trim();
+// Facilitator per network. Verified 2026-09-08 via /supported probes:
+//   testnet: x402.org/facilitator (feePayer 0.0.9185802)
+//   mainnet: api.blocky402.com    (feePayer 0.0.10571514)
+// Matches hedera-dev/x402-inference-pay-per-request-poc defaults.
+// Legacy X402_FACILITATOR_URL still honoured if set (overrides per-network).
+function getFacilitator(network: 'hedera:testnet' | 'hedera:mainnet'): string {
+  const legacy = (process.env.X402_FACILITATOR_URL || '').trim();
+  if (legacy) return legacy;
+  const key = network === 'hedera:mainnet'
+    ? 'X402_MAINNET_FACILITATOR_URL'
+    : 'X402_TESTNET_FACILITATOR_URL';
+  const fallback = network === 'hedera:mainnet'
+    ? 'https://api.blocky402.com'
+    : 'https://x402.org/facilitator';
+  return (process.env[key] || fallback).trim();
 }
 function getPayTo(): string {
   return (process.env.X402_PAYMENT_ADDRESS || '0x0000000000000000000000000000000000000000').trim();
@@ -85,32 +98,41 @@ function getNetwork(): 'hedera:testnet' | 'hedera:mainnet' {
 
 interface VerifyResult {
   valid: boolean;
-  mode: 'blocky402' | 'stub';
+  mode: 'blocky402' | 'x402.org' | 'stub';
   facilitator: string;
   note: string;
 }
 
 async function verifyPayment(header: string, intent: X402PaymentIntent): Promise<VerifyResult> {
-  const facilitator = getFacilitator();
+  const facilitator = getFacilitator(intent.network);
+  const mode: 'blocky402' | 'x402.org' = facilitator.includes('blocky402')
+    ? 'blocky402'
+    : 'x402.org';
 
   // Demo-safe mode. Accepts any non-empty header so judges can hit the
-  // endpoint without provisioning funded testnet USDC. The intent is
-  // real, the facilitator URL is real, and the HCS audit trail is real —
-  // only the signature check is bypassed. Flip X402_FACILITATOR_ENABLED=1
-  // and sign an EIP-3009 authorisation to move verification.mode → 'blocky402'.
+  // endpoint without a funded Hedera account. The intent is real, the
+  // facilitator URL is real, and the HCS audit trail is real — only the
+  // signature check is bypassed. Flip X402_FACILITATOR_ENABLED=1 and
+  // submit a Hedera-native signed payment envelope to move
+  // verification.mode → 'blocky402' (mainnet) or 'x402.org' (testnet).
   if (!envFlag('X402_FACILITATOR_ENABLED')) {
     return {
       valid: header.length > 0,
       mode: 'stub',
       facilitator,
-      note: 'demo-safe mode: intent + HCS receipt are real; signature check bypassed so judges can call without funded USDC. Toggle X402_FACILITATOR_ENABLED=1 + sign EIP-3009 to flip to blocky402.',
+      note: `demo-safe mode: intent + HCS receipt are real; signature check bypassed so judges can call without a funded Hedera account. Toggle X402_FACILITATOR_ENABLED=1 + submit a Hedera-native signed payment envelope to flip to ${mode}.`,
     };
   }
 
-  // Real facilitator path — Blocky402 /verify contract expects
-  //   { paymentHeader: base64 EIP-3009 payload, paymentRequirements: intent }
-  // Confirmed by probing api.blocky402.com/verify against the wrong
-  // shape and observing the error messages (see scripts/probe-blocky402.ts).
+  // Real facilitator path — both x402.org and Blocky402 speak the same
+  // /verify contract:
+  //   { paymentHeader: base64 signed payment envelope, paymentRequirements: intent }
+  // Envelope shape: JSON with x402Version + signature fields (facilitator
+  // decodes and validates). Facilitator acts as feePayer sponsor
+  // (x402.org: 0.0.9185802 · Blocky402: 0.0.10571514 per each /supported).
+  // NOT EIP-3009 — this is Hedera-native signing (TransferTransaction),
+  // not Ethereum ERC-20 authorization. Confirmed by probing both facilitators
+  // and by reading hedera-dev/x402-inference-pay-per-request-poc.
   try {
     const res = await fetch(`${facilitator}/verify`, {
       method: 'POST',
@@ -127,16 +149,16 @@ async function verifyPayment(header: string, intent: X402PaymentIntent): Promise
       const detail = errBody && typeof errBody === 'object' && 'message' in errBody
         ? String((errBody as { message: unknown }).message)
         : `HTTP ${res.status}`;
-      return { valid: false, mode: 'blocky402', facilitator, note: `facilitator rejected: ${detail}` };
+      return { valid: false, mode, facilitator, note: `facilitator rejected: ${detail}` };
     }
     const body = (await res.json()) as { valid?: boolean; isValid?: boolean };
-    // Blocky402 has historically used both `valid` and `isValid`; accept either.
+    // Facilitators have historically used both `valid` and `isValid`; accept either.
     const ok = body.valid === true || body.isValid === true;
     return {
       valid: ok,
-      mode: 'blocky402',
+      mode,
       facilitator,
-      note: ok ? 'blocky402-verified' : 'facilitator returned valid=false',
+      note: ok ? `${mode}-verified` : 'facilitator returned valid=false',
     };
   } catch (e) {
     logger.warn('[x402] facilitator verify failed', {
@@ -144,7 +166,7 @@ async function verifyPayment(header: string, intent: X402PaymentIntent): Promise
     });
     return {
       valid: false,
-      mode: 'blocky402',
+      mode,
       facilitator,
       note: e instanceof Error ? e.message : 'facilitator unreachable',
     };
@@ -155,14 +177,15 @@ async function verifyPayment(header: string, intent: X402PaymentIntent): Promise
 
 function buildIntent(request: NextRequest): X402PaymentIntent {
   const url = new URL(request.url);
+  const network = getNetwork();
   return {
     x402Version: 2,
     scheme: 'exact',
-    network: getNetwork(),
+    network,
     maxAmountRequired: getPriceMicros(),
     currency: 'USDC',
     payTo: getPayTo(),
-    facilitator: getFacilitator(),
+    facilitator: getFacilitator(network),
     resource: url.toString(),
     description: 'Signal-quality inference — one call, one asset',
     mimeType: 'application/json',

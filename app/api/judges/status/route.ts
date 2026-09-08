@@ -23,7 +23,7 @@ const VAULT = HEDERA_CONTRACT_ADDRESSES.testnet.communityPool.toLowerCase();
 const AUDIT_TOPIC = '0.0.10393879';
 const REGISTRY_TOPIC = '0.0.10401316';
 const NPM_PACKAGE = '@zkward/hedera-graphql-adapter';
-const STUDIO_ENDPOINT = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.1.1';
+const STUDIO_ENDPOINT = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0';
 
 interface CheckResult {
   id: string;

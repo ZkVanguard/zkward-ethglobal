@@ -24,7 +24,7 @@ Live on Sui mainnet since 2026-06-12 · Hedera-primary pivot shipped 2026-09-04 
 
 Everything you need to verify each submission in one place.
 
-**⚡ One URL for the whole board**: https://www.zkward.com/judges — runs 10 live checks server-side (Hedera vault, HCS topics, x402, A2A, adapter, verifiable GraphQL, Studio subgraph, npm package). JSON at `/api/judges/status`. Everything below is spelled out for depth.
+**⚡ One URL for the whole board**: https://www.zkward.com/judges — runs 11 live checks server-side (Hedera vault, HCS audit topic, HCS-14 registry, x402 intent + paid call, A2A round-trip, adapter health, verifiable GraphQL, signals query, Studio subgraph, npm package). JSON at `/api/judges/status`. Everything below is spelled out for depth.
 
 ### Hedera · AI & Agentic Payments ($6K)
 - **Live x402 endpoint (returns 402 with intent)**: https://www.zkward.com/api/hedera/x402/signal-quality?asset=BTC
@@ -33,7 +33,7 @@ Everything you need to verify each submission in one place.
 - **HCS-14 agent registry** (discoverable agent identity): [`0.0.10401316`](https://hashscan.io/testnet/topic/0.0.10401316) · [JSON view](https://www.zkward.com/api/hedera/agent-registry)
 - **A2A negotiation trace**: https://www.zkward.com/api/hedera/a2a/demo?asset=BTC&budget=500
 - **Consumer dashboard** (one-click flow): https://www.zkward.com/dashboard → **Agent Payments** tab
-- **Blocky402 facilitator wired**: intent points at `https://api.blocky402.com` (real API host); response `verification` block reports the actual mode (stub vs blocky402) for full transparency. **Prove it with one command**: `bun run scripts/probe-blocky402.ts` — hits `/supported` + our `/x402` intent + `/verify` with our real intent as `paymentRequirements`. Facilitator responds "Invalid payment header format" (proving it decoded our request and only rejected the unsigned stub payload) — the last mile is client-side EIP-3009 signing over funded USDC.
+- **Facilitators wired per network**: intent points at `https://x402.org/facilitator` (testnet, feePayer `0.0.9185802`) or `https://api.blocky402.com` (mainnet, feePayer `0.0.10571514`); response `verification` block reports the actual mode (`stub` / `x402.org` / `blocky402`) for full transparency. **Prove it with one command**: `bun run scripts/probe-blocky402.ts` — hits `/supported` + our `/x402` intent + `/verify` with our real intent as `paymentRequirements`. Facilitator responds "Invalid payment header format" (proving it decoded our request and only rejected the unsigned stub payload) — the last mile is a client-side Hedera-native signed payment envelope (TransferTransaction, NOT EIP-3009).
 
 ### Hedera · Open Source — Harness ($2K, up to 2 winners)
 Upstream contributions + dogfood loop:
@@ -44,7 +44,7 @@ Upstream contributions + dogfood loop:
 - **PR #52** — [hedera-dev/hedera-code-snippets](https://github.com/hedera-dev/hedera-code-snippets/pull/52) — `serve-hedera-contract-as-graphql` snippet, bridges Hedera into The Graph tooling ecosystem. `npm install && node index.mjs` returns a working standardized subgraph endpoint for any Hedera contract. Reference deployment: https://www.zkward.com/api/subgraph/hedera
 
 ### Hedera · Continuity ($1K)
-- Pre-existing: SUI mainnet USDC vault, live since 2026-06-12 (v0.4.0, 46+ days running)
+- Pre-existing: SUI mainnet USDC vault, live since 2026-06-12 (v0.4.0, running continuously)
 - New this event (see [full table below](#event-work-ethonline-2026--2026-09-03--2026-09-06)):
   - `SimpleUsdcVault` deployed to Hedera testnet: [`0xe7E6…9A9`](https://hashscan.io/testnet/contract/0xe7E6fEDce9d72D112137B631E8D51831D30729A9)
   - Test USDC: [`0x7043…ae1`](https://hashscan.io/testnet/contract/0x704365B35AeF0b7F9fc17c18B5162D4A6d600ae1)
@@ -57,7 +57,7 @@ Upstream contributions + dogfood loop:
 - **Composable Substreams module**: [`substreams/community-pool/`](./substreams/community-pool) — Rust handler ships alongside a packed [`dist/zkward-community-pool-v0.1.0.spkg`](./substreams/community-pool/dist/) (372 KB). Consumers run `substreams gui <spkg>` with zero Rust toolchain. 6/6 host tests, wasm build verified.
 
 ### Graph × Hedera bridge — **open-source library**
-- **Package**: [`@zkward/hedera-graphql-adapter@0.3.0`](https://www.npmjs.com/package/@zkward/hedera-graphql-adapter) — serves ANY Hedera contract as a standardized GraphQL / subgraph endpoint. The Graph doesn't index Hedera (129 EVM chains supported, Hedera not among them) — this bridges the gap so every Graph-native tool works over Hedera contracts. Install: `npm i @zkward/hedera-graphql-adapter`
+- **Package**: [`@zkward/hedera-graphql-adapter@0.6.0`](https://www.npmjs.com/package/@zkward/hedera-graphql-adapter) — serves ANY Hedera contract as a standardized GraphQL / subgraph endpoint. The Graph doesn't index Hedera (129 EVM chains supported, Hedera not among them) — this bridges the gap so every Graph-native tool works over Hedera contracts. Install: `npm i @zkward/hedera-graphql-adapter`
 - **v0.3 signals query** — reconstructs the AI agent's decision receipts (x402 payment receipts + hedge projections) from an HCS audit topic. `{ signals(where: { asset: "BTC" }) { direction confidence hcsSeq } }` returns real on-chain trace, each row independently verifiable at hashscan.io/testnet/topic/0.0.10393879.
 - **Reference deployment**: https://www.zkward.com/api/subgraph/hedera — powered by the same package
 - **Cross-backend parity + verifiable GraphQL demo** in one command: `bun run scripts/demo-graph-parity.ts` — runs the same query against Studio (Sepolia) and the adapter (Hedera testnet), then HCS-attests the Hedera response and verifies the hash byte-for-byte in ~5 seconds.
@@ -74,7 +74,7 @@ Upstream contributions + dogfood loop:
 
 ## ETHGlobal Online — three sponsor tracks, ~$19K addressable
 
-Every submission is **Continuity** — the base product is a live SUI mainnet vault (v0.4.0, 46+ days running, real users, real capital). Everything below the "Anything below this line is event work" markers in [`HACKATHON_TODO.md`](./HACKATHON_TODO.md) shipped during the event window (2026-09-03 → 2026-09-05).
+Every submission is **Continuity** — the base product is a live SUI mainnet vault (v0.4.0, running continuously, real users, real capital). Everything below the "Anything below this line is event work" markers in [`HACKATHON_TODO.md`](./HACKATHON_TODO.md) shipped during the event window (2026-09-03 → 2026-09-05).
 
 ### 🤖 Hedera — AI & Agentic Payments ($2K) + Continuity ($1K) + Open Source ($1K) — $4K addressable
 
