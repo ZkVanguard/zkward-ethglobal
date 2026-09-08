@@ -44,26 +44,42 @@ export const maxDuration = 15;
 // + resource + accepts[]. Each accepts entry is a PaymentRequirements object
 // with { scheme, network, amount, asset, payTo, maxTimeoutSeconds, extra? }.
 
-interface X402PaymentRequirements {
+interface X402PaymentRequirementsV1 {
   scheme: 'exact';
   network: 'hedera:testnet' | 'hedera:mainnet';
-  maxAmountRequired: string;   // stringified 6-decimal micros for USDC (v1 field name)
-  resource: string;            // URL string
+  maxAmountRequired: string;
+  resource: string;
   description: string;
   mimeType?: string;
   outputSchema?: Record<string, unknown>;
   payTo: string;
   maxTimeoutSeconds: number;
-  asset: string;               // token ID (HTS format 0.0.NNN on Hedera)
+  asset: string;
+  extra?: Record<string, unknown>;
+}
+
+interface X402PaymentRequirementsV2 {
+  scheme: 'exact';
+  network: 'hedera:testnet' | 'hedera:mainnet';
+  amount: string;
+  asset: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
   extra?: Record<string, unknown>;
 }
 
 interface X402PaymentIntent {
   x402Version: 1;
   error: string;
-  accepts: X402PaymentRequirements[];
-  // Non-spec extras we keep for our own tooling (probe scripts, judges dashboard)
+  accepts: X402PaymentRequirementsV1[];
   facilitator: string;
+}
+
+interface X402PaymentIntentV2 {
+  x402Version: 2;
+  error: string;
+  resource: { url: string; description?: string; mimeType?: string; serviceName?: string; tags?: string[] };
+  accepts: X402PaymentRequirementsV2[];
 }
 
 // Circle USDC HTS token IDs — same as @x402/hedera constants.
@@ -229,6 +245,48 @@ function buildIntent(request: NextRequest): X402PaymentIntent {
   };
 }
 
+// Build the v2 shape emitted via the PAYMENT-REQUIRED header. @x402/fetch
+// clients read this first; falling back to the v1 body if the header is
+// missing. Keeps us compatible with BOTH client generations.
+function buildIntentV2(request: NextRequest): X402PaymentIntentV2 {
+  const url = new URL(request.url);
+  const network = getNetwork();
+  const asset = network === 'hedera:mainnet' ? HEDERA_MAINNET_USDC : HEDERA_TESTNET_USDC;
+  return {
+    x402Version: 2,
+    error: 'payment required',
+    resource: {
+      url: url.toString(),
+      description: 'Signal-quality inference — one call, one asset',
+      mimeType: 'application/json',
+      serviceName: 'zkward-signal-quality',
+      tags: ['ai', 'signal', 'hedera'],
+    },
+    accepts: [{
+      scheme: 'exact',
+      network,
+      amount: getPriceMicros(),
+      asset,
+      payTo: getPayTo(),
+      maxTimeoutSeconds: 300,
+      extra: { priceModel: 'per-call', signalWindow: '5min', currency: 'USDC' },
+    }],
+  };
+}
+
+// Base64-encode a JSON value for use in the PAYMENT-REQUIRED header.
+// Mirrors @x402/core's safeBase64Encode implementation.
+function encodePaymentRequiredHeader(v: unknown): string {
+  const s = JSON.stringify(v);
+  if (typeof globalThis.btoa === 'function') {
+    const bytes = new TextEncoder().encode(s);
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return globalThis.btoa(bin);
+  }
+  return Buffer.from(s, 'utf-8').toString('base64');
+}
+
 // ─── Signal-quality inference (wraps existing PredictionAggregatorService) ─
 
 interface SignalQualityResponse {
@@ -374,16 +432,22 @@ export async function GET(request: NextRequest): Promise<NextResponse<SignalQual
 
   const paymentHeader = (request.headers.get('X-PAYMENT') || '').trim();
   if (!paymentHeader) {
-    // 402 Payment Required with the full x402 v2 PaymentRequired envelope
-    // as the response body (spec-compliant so @x402/fetch can parse it).
-    return NextResponse.json(buildIntent(request), { status: 402 });
+    // Emit both: v1 shape in the body (human-readable + fallback for older
+    // clients), v2 shape in the PAYMENT-REQUIRED header (what @x402/fetch
+    // reads first). Client picks header when present.
+    const paymentRequiredHeader = encodePaymentRequiredHeader(buildIntentV2(request));
+    return NextResponse.json(buildIntent(request), {
+      status: 402,
+      headers: { 'PAYMENT-REQUIRED': paymentRequiredHeader },
+    });
   }
 
   const verification = await verifyPayment(paymentHeader, buildIntent(request));
   if (!verification.valid) {
+    const paymentRequiredHeader = encodePaymentRequiredHeader(buildIntentV2(request));
     return NextResponse.json(
       { ...buildIntent(request), verification },
-      { status: 402 },
+      { status: 402, headers: { 'PAYMENT-REQUIRED': paymentRequiredHeader } },
     );
   }
 
