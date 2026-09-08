@@ -203,18 +203,19 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     const amountWei = parseUnits(amount, USDC_DECIMALS);
     const need = amountWei;
     const have = (allowance as bigint | undefined) ?? 0n;
+    // Max uint256 — approve once, deposit forever after. Trade-off:
+    // gives the vault unlimited USDC allowance. Acceptable because the
+    // vault is our own audited SimpleUsdcVault; the alternative (exact
+    // per-deposit approve) forces users to sign 2 prompts EVERY deposit.
+    const APPROVE_AMOUNT = (2n ** 256n) - 1n;
 
     try {
-      // Approve first if allowance is short. Approve for exact `need`
-      // rather than max so the user sees a specific number in the wallet
-      // prompt (matches ERC-20 best practice + reduces exploit surface
-      // if the vault is ever compromised).
       if (have < need) {
         setStatus('approving');
         const approveData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
-          args: [vault, need],
+          args: [vault, APPROVE_AMOUNT],
         });
         const approveHash = isPrivySigner && privySender
           ? (await privySender.sendTransaction({ to: usdc, data: approveData, chainId: HEDERA_TESTNET_ID })).hash
@@ -222,13 +223,13 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
               address: usdc,
               abi: erc20Abi,
               functionName: 'approve',
-              args: [vault, need],
+              args: [vault, APPROVE_AMOUNT],
               chainId: HEDERA_TESTNET_ID,
             });
         setPendingHash(approveHash);
         // Wait for approve tx receipt before deposit — otherwise deposit
-        // will revert with allowance shortfall. We can't chain the two
-        // in one tx (would need Permit which MockERC20 doesn't support).
+        // will revert with allowance shortfall. Can't chain in one tx
+        // (would need Permit which MockERC20 doesn't support).
         await waitForTx(approveHash);
         await refetchAllowance();
       }
