@@ -1,58 +1,82 @@
 'use client';
 
 /**
- * Real implementation — only imported when Privy is enabled at build time.
- * Wraps @privy-io/react-auth's useSendTransaction into the PrivySender
- * shape the safe wrapper exposes.
+ * Real implementation — imported only when Privy is enabled at build time.
  *
- * useSendTransaction always signs with the current Privy user's embedded
- * wallet, regardless of what wagmi's active connector thinks. That's the
- * whole point — bypass wagmi's connector arbitration when we know we
- * want the embedded wallet to sign.
+ * We DON'T use @privy-io/react-auth's useSendTransaction / useSignTypedData
+ * hooks. When PrivyProvider is wrapped by @privy-io/wagmi, those hooks
+ * hit "Cannot destructure property 'method' of 'o.signMessage'" because
+ * the SDK expects a specific wallet-config path that isn't populated in
+ * the wagmi bridge scenario.
+ *
+ * Instead: grab the embedded wallet's raw EIP-1193 provider directly via
+ * useWallets() → wallet.getEthereumProvider(), then use viem's
+ * walletClient to sign / send. This bypasses wagmi's connector arbitration
+ * AND Privy's high-level hooks — guaranteed to sign with the embedded
+ * wallet regardless of what wagmi's active connector thinks.
  */
 
-import { useCallback } from 'react';
-import { usePrivy, useSendTransaction, useSignTypedData } from '@privy-io/react-auth';
+import { useCallback, useMemo } from 'react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { createWalletClient, custom, defineChain } from 'viem';
 import type { PrivySender } from './usePrivySender';
+
+// Inline Hedera testnet chain so this hook has zero cross-module deps
+// (wagmi-config.ts imports would recurse via WalletProviders).
+const hederaTestnetChain = defineChain({
+  id: 296,
+  name: 'Hedera Testnet',
+  nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://testnet.hashio.io/api'] },
+    public: { http: ['https://testnet.hashio.io/api'] },
+  },
+  blockExplorers: {
+    default: { name: 'HashScan', url: 'https://hashscan.io/testnet' },
+  },
+});
 
 export function usePrivySenderReal(): PrivySender | null {
   const { authenticated, ready } = usePrivy();
-  const { sendTransaction } = useSendTransaction();
-  const { signTypedData } = useSignTypedData();
+  const { wallets } = useWallets();
+
+  const embedded = useMemo(
+    () => wallets?.find((w) => w.walletClientType === 'privy'),
+    [wallets],
+  );
 
   const send: PrivySender['sendTransaction'] = useCallback(async (tx) => {
-    const result = await sendTransaction({
+    if (!embedded) throw new Error('privy embedded wallet not available');
+    // Force embedded wallet to the target chain before signing —
+    // Hedera testnet in our case. Cheap idempotent op if already there.
+    try { await embedded.switchChain(tx.chainId); } catch { /* already on chain */ }
+    const provider = await embedded.getEthereumProvider();
+    const walletClient = createWalletClient({
+      account: embedded.address as `0x${string}`,
+      chain: hederaTestnetChain,
+      transport: custom(provider),
+    });
+    const hash = await walletClient.sendTransaction({
       to: tx.to,
       data: tx.data,
-      value: tx.value,
-      chainId: tx.chainId,
+      value: tx.value ? BigInt(tx.value) : undefined,
     });
-    // Privy's return shape varies by SDK version: sometimes a hex string,
-    // sometimes { hash }, sometimes { transactionHash }. Normalise to hash.
-    const hash =
-      typeof result === 'string'
-        ? result
-        : (result as { hash?: string; transactionHash?: string })?.hash
-          ?? (result as { transactionHash?: string })?.transactionHash;
-    if (!hash || !/^0x[0-9a-fA-F]+$/.test(hash)) {
-      throw new Error('privy sendTransaction returned no hash');
-    }
-    return { hash: hash as `0x${string}` };
-  }, [sendTransaction]);
+    return { hash };
+  }, [embedded]);
 
   const sign: PrivySender['signTypedData'] = useCallback(async (payload) => {
-    // Same return-shape variance as sendTransaction — normalise.
-    const result = await signTypedData(payload as never);
-    const sig =
-      typeof result === 'string'
-        ? result
-        : (result as { signature?: string })?.signature;
-    if (!sig || !/^0x[0-9a-fA-F]+$/.test(sig)) {
-      throw new Error('privy signTypedData returned no signature');
-    }
-    return sig as `0x${string}`;
-  }, [signTypedData]);
+    if (!embedded) throw new Error('privy embedded wallet not available');
+    const provider = await embedded.getEthereumProvider();
+    const walletClient = createWalletClient({
+      account: embedded.address as `0x${string}`,
+      chain: hederaTestnetChain,
+      transport: custom(provider),
+    });
+    // viem accepts the standard EIP-712 shape { domain, types, primaryType, message }.
+    const sig = await walletClient.signTypedData(payload as never);
+    return sig;
+  }, [embedded]);
 
-  if (!ready || !authenticated) return null;
+  if (!ready || !authenticated || !embedded) return null;
   return { sendTransaction: send, signTypedData: sign };
 }
