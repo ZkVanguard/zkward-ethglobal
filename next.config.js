@@ -78,12 +78,33 @@ const nextConfig = {
   // `@base-org/account` → `@coinbase/cdp-sdk` → `@x402/*` (unshipped
   // sub-paths). We only use `injected`, so false-alias the whole subtree
   // and let webpack treat them as empty modules.
-  webpack: (config) => {
+  webpack: (config, { webpack }) => {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
       '@base-org/account': false,
       '@coinbase/cdp-sdk': false,
     };
+
+    // Optional peer deps we don't need — MetaMask SDK's React Native
+    // storage adapter, Privy's Farcaster mini-app-solana bridge. Actively
+    // ignore instead of just warning so build output is clean.
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^@react-native-async-storage\/async-storage$/,
+      }),
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^@farcaster\/mini-app-solana$/,
+      }),
+    );
+
+    // Silence noisy "Critical dependency: request of a dependency is an
+    // expression" from viem's ox/tempo dynamic import — the dynamic import
+    // is intentional (viem loads chain configs on demand) and works fine.
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      { module: /node_modules[\\/].*ox[\\/]_esm[\\/]tempo/, message: /Critical dependency/ },
+    ];
+
     return config;
   },
 

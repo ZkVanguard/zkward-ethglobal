@@ -18,6 +18,7 @@ docs/demo-videos/
 .github/
 node_modules/
 .next/
+.vercel/
 test/
 tests/
 __tests__/
@@ -25,6 +26,16 @@ __tests__/
 *.test.tsx
 *.spec.ts
 *.spec.tsx
+
+# Non-Next artefacts (1.1GB+ of Rust/Move/build stuff Vercel doesn't need)
+substreams/
+zkp-rust/
+contracts/sui/
+contracts/core/
+contracts/mocks/
+contracts/helpers/
+graphify-out/
+.memsearch/
 
 # Build artifacts
 artifacts/
