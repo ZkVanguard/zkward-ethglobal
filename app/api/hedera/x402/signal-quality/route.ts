@@ -40,28 +40,38 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
 // ─── Payment intent shape ──────────────────────────────────────────────────
-// Matches Blocky402's `/supported` shape (x402 spec v2):
-//   { x402Version: 2, scheme: 'exact', network: 'hedera:mainnet'|'hedera:testnet', ... }
+// x402 v2 spec (see @x402/core/schemas): PaymentRequired has x402Version + error
+// + resource + accepts[]. Each accepts entry is a PaymentRequirements object
+// with { scheme, network, amount, asset, payTo, maxTimeoutSeconds, extra? }.
+
+interface X402PaymentRequirements {
+  scheme: 'exact';
+  network: 'hedera:testnet' | 'hedera:mainnet';
+  amount: string;              // stringified 6-decimal micros for USDC
+  asset: string;               // token ID (HTS format 0.0.NNN on Hedera)
+  payTo: string;               // Hedera account ID or EVM address
+  maxTimeoutSeconds: number;
+  extra?: Record<string, unknown>;
+}
 
 interface X402PaymentIntent {
   x402Version: 2;
-  scheme: 'exact';
-  network: 'hedera:testnet' | 'hedera:mainnet';
-  maxAmountRequired: string;   // stringified 6-decimal micros for USDC
-  currency: 'USDC' | 'HBAR';
-  payTo: string;               // EVM address on Hedera
-  facilitator: string;         // Blocky402 URL — https://api.blocky402.com
-  resource: string;            // this endpoint URL
-  description: string;
-  mimeType: 'application/json';
-  outputSchema: Record<string, unknown>;
-  metadata: {
-    chain: 'hedera';
-    endpoint: string;
-    priceModel: 'per-call';
-    signalWindow: string;
+  error: string;
+  resource: {
+    url: string;
+    description?: string;
+    mimeType?: string;
+    serviceName?: string;
+    tags?: string[];
   };
+  accepts: X402PaymentRequirements[];
+  // Non-spec extras we keep for our own tooling (probe scripts, judges dashboard)
+  facilitator: string;
 }
+
+// Circle USDC HTS token IDs — same as @x402/hedera constants.
+const HEDERA_TESTNET_USDC = '0.0.429274';
+const HEDERA_MAINNET_USDC = '0.0.456858';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -104,7 +114,8 @@ interface VerifyResult {
 }
 
 async function verifyPayment(header: string, intent: X402PaymentIntent): Promise<VerifyResult> {
-  const facilitator = getFacilitator(intent.network);
+  const requirement = intent.accepts[0];
+  const facilitator = getFacilitator(requirement.network);
   const mode: 'blocky402' | 'x402.org' = facilitator.includes('blocky402')
     ? 'blocky402'
     : 'x402.org';
@@ -139,7 +150,9 @@ async function verifyPayment(header: string, intent: X402PaymentIntent): Promise
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         paymentHeader: header,
-        paymentRequirements: intent,
+        // Facilitator wants a SINGLE PaymentRequirements object (accepts[0]),
+        // not the whole PaymentRequired envelope.
+        paymentRequirements: requirement,
       }),
       signal: AbortSignal.timeout(3000),
     });
@@ -178,34 +191,31 @@ async function verifyPayment(header: string, intent: X402PaymentIntent): Promise
 function buildIntent(request: NextRequest): X402PaymentIntent {
   const url = new URL(request.url);
   const network = getNetwork();
+  const asset = network === 'hedera:mainnet' ? HEDERA_MAINNET_USDC : HEDERA_TESTNET_USDC;
   return {
     x402Version: 2,
-    scheme: 'exact',
-    network,
-    maxAmountRequired: getPriceMicros(),
-    currency: 'USDC',
-    payTo: getPayTo(),
-    facilitator: getFacilitator(network),
-    resource: url.toString(),
-    description: 'Signal-quality inference — one call, one asset',
-    mimeType: 'application/json',
-    outputSchema: {
-      type: 'object',
-      properties: {
-        asset: { type: 'string' },
-        signal: { type: 'string', enum: ['BULLISH', 'BEARISH', 'NEUTRAL'] },
-        confidence: { type: 'number', minimum: 0, maximum: 100 },
-        reasoning: { type: 'string' },
-        window: { type: 'string' },
-        source: { type: 'string' },
+    error: 'payment required',
+    resource: {
+      url: url.toString(),
+      description: 'Signal-quality inference — one call, one asset',
+      mimeType: 'application/json',
+      serviceName: 'zkward-signal-quality',
+      tags: ['ai', 'signal', 'hedera'],
+    },
+    accepts: [{
+      scheme: 'exact',
+      network,
+      amount: getPriceMicros(),
+      asset,
+      payTo: getPayTo(),
+      maxTimeoutSeconds: 300,
+      extra: {
+        priceModel: 'per-call',
+        signalWindow: '5min',
+        currency: 'USDC',
       },
-    },
-    metadata: {
-      chain: 'hedera',
-      endpoint: '/api/hedera/x402/signal-quality',
-      priceModel: 'per-call',
-      signalWindow: '5min',
-    },
+    }],
+    facilitator: getFacilitator(network),
   };
 }
 
@@ -354,21 +364,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<SignalQual
 
   const paymentHeader = (request.headers.get('X-PAYMENT') || '').trim();
   if (!paymentHeader) {
-    // 402 Payment Required with the intent — the whole point of x402.
-    return NextResponse.json(
-      { error: 'payment required', intent: buildIntent(request) },
-      { status: 402 },
-    );
+    // 402 Payment Required with the full x402 v2 PaymentRequired envelope
+    // as the response body (spec-compliant so @x402/fetch can parse it).
+    return NextResponse.json(buildIntent(request), { status: 402 });
   }
 
   const verification = await verifyPayment(paymentHeader, buildIntent(request));
   if (!verification.valid) {
     return NextResponse.json(
-      {
-        error: 'payment verification failed',
-        intent: buildIntent(request),
-        verification,
-      },
+      { ...buildIntent(request), verification },
       { status: 402 },
     );
   }

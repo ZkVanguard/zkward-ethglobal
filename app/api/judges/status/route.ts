@@ -110,15 +110,21 @@ async function checkX402Intent(origin: string): Promise<CheckResult> {
   const t = await timed(async () => {
     const r = await fetch(`${origin}/api/hedera/x402/signal-quality?asset=BTC`);
     if (r.status !== 402) throw new Error(`expected 402, got ${r.status}`);
-    const j = await r.json() as { intent?: { payTo?: string; facilitator?: string; maxAmountRequired?: string } };
-    if (!j.intent?.payTo || !j.intent?.facilitator) throw new Error('intent shape invalid');
-    return j.intent;
+    // x402 v2 spec shape: { x402Version, error, resource, accepts: [{scheme, network, amount, asset, payTo, ...}], facilitator }
+    const j = await r.json() as {
+      x402Version?: number;
+      accepts?: Array<{ payTo?: string; amount?: string; asset?: string; network?: string }>;
+      facilitator?: string;
+    };
+    const req = j.accepts?.[0];
+    if (!req?.payTo || !j.facilitator) throw new Error('intent shape invalid');
+    return { ...req, facilitator: j.facilitator };
   });
   return {
     id: 'x402-intent',
     label: 'x402 endpoint returns 402 with valid intent',
     ok: !!t.value,
-    detail: t.value ? `pays to ${t.value.payTo?.slice(0, 10)}… via ${t.value.facilitator}, ${t.value.maxAmountRequired} micros` : t.error ?? 'unknown',
+    detail: t.value ? `pays to ${t.value.payTo?.slice(0, 10)}… via ${t.value.facilitator}, ${t.value.amount} micros of ${t.value.asset}` : t.error ?? 'unknown',
     link: `${origin}/api/hedera/x402/signal-quality?asset=BTC`,
     latencyMs: t.latencyMs,
   };
