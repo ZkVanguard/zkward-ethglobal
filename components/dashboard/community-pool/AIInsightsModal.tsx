@@ -1,6 +1,7 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Brain, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AIRecommendation } from './types';
@@ -17,7 +18,14 @@ export const AIInsightsModal = memo(function AIInsightsModal({
   onClose,
   recommendation,
 }: AIInsightsModalProps) {
-  return (
+  // Portal target — the parent tree wraps in framer-motion's <motion.div>
+  // which applies `transform`, breaking `position: fixed` for descendants
+  // (they'd anchor to the transformed ancestor, not the viewport). Portal
+  // to document.body so the modal always covers the viewport.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => { setPortalTarget(document.body); }, []);
+  if (!portalTarget) return null;
+  const modal = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -125,4 +133,5 @@ export const AIInsightsModal = memo(function AIInsightsModal({
       )}
     </AnimatePresence>
   );
+  return createPortal(modal, portalTarget);
 });
