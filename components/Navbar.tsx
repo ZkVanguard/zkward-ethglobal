@@ -91,10 +91,10 @@ export const Navbar = memo(function Navbar() {
     >
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-[52px] min-w-0">
-          {/* Logo - Always visible */}
+          {/* Logo — brand mark + wordmark. Logo component already renders
+              the "ZkWard" text from sm: (640px+); no extra span needed. */}
           <Link href="/" className="flex items-center gap-2 -ml-2">
             <Logo />
-            <span className="lg:hidden text-[17px] font-semibold text-label-primary tracking-tight">ZkWard</span>
           </Link>
 
           {/* Desktop Navigation - Centered with proper spacing */}

@@ -416,13 +416,22 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
    Reduced-motion + touch devices collapse to flat baseline. */
 .vault-tilt-scene {
   perspective: 1200px;
-  perspective-origin: 50% 40%;
+  perspective-origin: 50% 50%;
   transform-style: preserve-3d;
+  /* Ensure the card + its glow + tilt effects never leak horizontally on
+     narrow viewports. width:100% keeps the wrapper flush; max-w applied
+     from Tailwind (max-w-[720px]) handles centering. */
+  width: 100%;
+  position: relative;
 }
 .vault-idle-float {
   animation: vault-float 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   transform-style: preserve-3d;
   will-change: transform;
+  /* Keep the float wrapper flush with the tilt scene so the card doesn't
+     drift horizontally when combined with padding on the parent. */
+  width: 100%;
+  position: relative;
 }
 @keyframes vault-float {
   0%, 100% {
@@ -458,12 +467,15 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
   transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* Ambient soft glow beneath the card — anchors it visually + adds
-   depth without an intrusive drop shadow. */
+   depth without an intrusive drop shadow. Positioned relative to the
+   card center; scales with the parent so the glow stays aligned across
+   viewports (was drifting on wide screens with a fixed left/right). */
 .vault-idle-float::before {
   content: '';
   position: absolute;
-  left: 8%;
-  right: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 84%;
   bottom: -18px;
   height: 40px;
   border-radius: 50%;
@@ -488,7 +500,17 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
   .vault-tilt::after { opacity: 0 !important; }
 }
 @media (max-width: 767px) {
+  /* Mobile: keep gentle float, kill 3D perspective tilt (no cursor to
+     drive it), also shrink the ambient glow so it doesn't peek past
+     the narrow card edges. */
+  .vault-tilt-scene { perspective: none; }
   .vault-idle-float { animation-duration: 9s; }
+  .vault-idle-float::before {
+    width: 70%;
+    height: 28px;
+    bottom: -12px;
+    filter: blur(10px);
+  }
   .vault-tilt { transform: none !important; transition: none !important; }
   .vault-tilt::after { opacity: 0 !important; }
 }

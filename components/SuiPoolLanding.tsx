@@ -647,10 +647,14 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
           {/* Headline — tightened to 2 short lines, no gradient text (the
               Vault Meter below is the visual signature). Space Grotesk
               display face gives numbers + short phrases distinctive shape. */}
-          <h1 className="font-display text-center text-[38px] xs:text-[44px] sm:text-[60px] md:text-[72px] lg:text-[84px] font-semibold tracking-[-0.04em] leading-[0.96] text-label-primary mb-4 sm:mb-6 break-words">
+          <h1
+            className="font-display text-center text-[38px] xs:text-[44px] sm:text-[54px] md:text-[64px] lg:text-[80px] font-semibold tracking-[-0.04em] leading-[0.96] text-label-primary mb-4 sm:mb-6"
+            style={{ textWrap: 'balance', hyphens: 'none', overflowWrap: 'normal' }}
+          >
             Your USDC.
             <br />
-            Actively managed on-chain.
+            Actively managed{' '}
+            <span className="whitespace-nowrap">on-chain.</span>
           </h1>
 
           {/* Subtitle — 15 words, one line's worth on desktop */}
