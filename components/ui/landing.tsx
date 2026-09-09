@@ -73,10 +73,17 @@ export function Reveal({
       el.setAttribute('data-reveal', 'in');
       return;
     }
+    // Safety fallback: if nothing has scrolled us into view within 4 seconds
+    // (e.g. very tall page, print, headless screenshot, or a user who lands
+    // and idles), reveal anyway so content is never stuck at opacity 0.
+    const fallback = window.setTimeout(() => {
+      if (el.getAttribute('data-reveal') !== 'in') el.setAttribute('data-reveal', 'in');
+    }, 4000);
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
         io.disconnect();
+        window.clearTimeout(fallback);
         if (delay > 0) {
           const t = window.setTimeout(() => el.setAttribute('data-reveal', 'in'), delay * 1000);
           // Clean-up path only reachable if the caller unmounts within
@@ -91,6 +98,7 @@ export function Reveal({
     io.observe(el);
     return () => {
       io.disconnect();
+      window.clearTimeout(fallback);
       const t = el.dataset.revealTimer;
       if (t) window.clearTimeout(Number(t));
     };
