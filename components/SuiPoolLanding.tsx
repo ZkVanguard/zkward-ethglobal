@@ -1,9 +1,7 @@
 'use client';
 
 import { memo, useEffect, useRef, useState } from 'react';
-import nextDynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
-import { useReducedMotion } from 'framer-motion';
 import { Link } from '@/i18n/routing';
 import {
   ArrowRight, ShieldCheck, Zap, BarChart3,
@@ -17,81 +15,10 @@ import { Reveal, LiveIndicator, StatusPill, TrustBadge } from './ui/landing';
 // ease-in-out "slide-and-stop" cadence.
 const SPRING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
-// Cursor spotlight — updates --x/--y CSS variables on a container from
-// pointermove. Falls back silently if prefers-reduced-motion is set.
-// Uses rAF to keep at 60fps regardless of pointer event flood, and
-// skips work below md: (touch devices don't produce a persistent
-// pointer, so a cursor spotlight would just look like a static blob).
-function useCursorSpotlight<T extends HTMLElement>(ref: React.RefObject<T | null>) {
-  const reduce = useReducedMotion();
-  useEffect(() => {
-    if (reduce) return;
-    const el = ref.current;
-    if (!el) return;
-    // matchMedia gate so we don't burn work on touch devices.
-    const mq = window.matchMedia('(min-width: 768px) and (pointer: fine)');
-    if (!mq.matches) return;
-    let raf = 0;
-    const onMove = (e: PointerEvent) => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const rect = el.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
-        el.style.setProperty('--sx', `${x}%`);
-        el.style.setProperty('--sy', `${y}%`);
-      });
-    };
-    el.addEventListener('pointermove', onMove);
-    return () => {
-      el.removeEventListener('pointermove', onMove);
-      cancelAnimationFrame(raf);
-    };
-  }, [ref, reduce]);
-}
-
-// Chart is heavy (chart.js + react-chartjs-2). Dynamic-import so the landing
-// paints instantly and the chart hydrates below-the-fold when the user reaches
-// it. Prevents the hero LCP being blocked by chart bundle download.
-const NavHistoryChart = nextDynamic(
-  () => import('./dashboard/NavHistoryChart').then((m) => ({ default: m.NavHistoryChart })),
-  { ssr: false, loading: () => <div className="h-64 sm:h-72 bg-system-bg-secondary rounded-ios-xl animate-pulse" /> },
-);
-
-// LazyChart — chart.js is 193 KB. next/dynamic alone still fetches
-// the chunk on mount (chart is below-the-fold but Next hydrates the
-// whole page). Gating with IntersectionObserver + a 400px rootMargin
-// defers the fetch until the user actually scrolls near it. Users who
-// bounce from the hero never download chart.js at all.
-function LazyChart() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    if (visible) return;
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
-      { rootMargin: '400px 0px' },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible]);
-  return (
-    <div ref={ref} className="min-h-[16rem] sm:min-h-[18rem]">
-      {visible ? (
-        <NavHistoryChart />
-      ) : (
-        <div className="h-64 sm:h-72 bg-system-bg-secondary rounded-ios-xl animate-pulse" />
-      )}
-    </div>
-  );
-}
+// Cursor spotlight removed — user asked for a static design without the
+// pointer-follow glow. CSS variables --sx/--sy still fall back to (50%,
+// 50%) via the `var(--sx, 50%)` defaults so HeroGraphBg + .vault-tilt
+// simply render at their neutral center position.
 
 // TVL cap enforced by the Move contract. Surfacing "room remaining" on the
 // landing gives visitors a scale anchor without leading with the current
@@ -617,10 +544,9 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
     staleTime: 30_000,
   });
 
-  // Cursor-following spotlight on the hero — sets --sx/--sy CSS vars
-  // that a radial-gradient reads. Static gradient below md: (touch).
+  // Hero ref kept for structural anchor; cursor-follow effects removed
+  // per design request.
   const heroRef = useRef<HTMLElement>(null);
-  useCursorSpotlight(heroRef);
 
   // Build allocation legend (positive entries only)
   const allocationEntries = pool
@@ -643,21 +569,6 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
             Reuses --sx/--sy from useCursorSpotlight — no extra listener.
             Extends up under the navbar (see HeroGraphBg for details). */}
         <HeroGraphBg />
-        {/* Cursor-follow spotlight (desktop) — reads --sx/--sy set by
-            useCursorSpotlight. Falls back to a static center-top radial
-            when the vars aren't set (initial paint, touch devices,
-            reduced-motion). Also extends up so the blue-tinted glow
-            softly bleeds through the navbar glass. */}
-        <div
-          aria-hidden
-          className="absolute -top-24 left-0 right-0 bottom-0 -z-10 pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse 600px 400px at var(--sx, 50%) var(--sy, 20%), rgba(0,105,217,0.14) 0%, rgba(0,105,217,0) 60%)',
-            transition: `background 500ms ${SPRING}`,
-          }}
-        />
-
         <div className="max-w-[1100px] mx-auto">
           {/* Single multichain status pill — SUI mainnet flagship + Hedera
               testnet as the primary EVM demo. One line, less visual noise
@@ -767,18 +678,6 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
               (Mirror Node). Compact so it doesn't compete with the SUI
               vault meter. */}
           <HederaVaultCallout />
-        </div>
-      </section>
-
-      {/* ─────────────────────────────────────────────────────────────── */}
-      {/* SHARE-PRICE HISTORY — honest time-series context                */}
-      {/* ─────────────────────────────────────────────────────────────── */}
-      <section className="py-8 sm:py-14 md:py-16 px-4 sm:px-5 lg:px-8 bg-system-bg-primary min-w-0">
-        <div className="max-w-[920px] mx-auto">
-          <LazyChart />
-          <p className="text-center text-xs sm:text-footnote text-label-tertiary mt-4 leading-relaxed">
-            Every point is a real on-chain snapshot. Toggle the window to see recent behaviour or the full history.
-          </p>
         </div>
       </section>
 
