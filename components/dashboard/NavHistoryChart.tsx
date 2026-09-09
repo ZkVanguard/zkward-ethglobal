@@ -79,9 +79,18 @@ async function fetchHederaHistoryViaAdapter(): Promise<NavHistoryResponse | null
   // for the chart. Every underlying navUsd point is exact + HCS-anchored.
   const totalSharesMicros = BigInt(j.data.pools?.[0]?.totalShares ?? '1000000');
   const shares = Number(totalSharesMicros) / 1e6 || 1;
+  // HCS topic accumulates NAV snapshots across BOTH the old V1 vault (which
+  // held ~$1000 for a while) AND the current V2 vault. Dividing old-pool
+  // NAV by current share count creates a fake historical peak (e.g. $1000
+  // / 70 shares = $14.46 spurious peak on the chart). Filter out any point
+  // whose navUsd is > 10x the current pool NAV — that's outside any
+  // plausible one-pool trajectory.
+  const currentNavUsd = Number(j.data.navHistory[0]?.totalNavUsd ?? 0) / 1e6;
+  const navCeiling = currentNavUsd > 0 ? currentNavUsd * 10 : Infinity;
   const points = j.data.navHistory
     .slice()
     .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+    .filter((s) => (Number(s.totalNavUsd) / 1e6) <= navCeiling)
     .map((s) => {
       const navUsd = Number(s.totalNavUsd) / 1e6;
       return {

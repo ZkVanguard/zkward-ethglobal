@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useState } from 'react';
+import { memo } from 'react';
 import { Award, Shield, Wallet, ExternalLink, CheckCircle2, Database } from 'lucide-react';
 import type { LeaderboardEntry } from './types';
 import { formatPercent } from './utils';
@@ -53,18 +53,10 @@ const EXPLORER_URLS: Record<number, string> = {
   296: 'https://hashscan.io/testnet',
 };
 
-// Deterministic treasury proxy address for EVM chains
-const ZKWARD_PDA_DOMAIN = 'ZKWARD_PROXY_PDA_V2';
-
-async function deriveTreasuryProxyClient(): Promise<string> {
-  const derivationPath = `${ZKWARD_PDA_DOMAIN}:treasury:pool-share:0`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(derivationPath);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  return '0x' + hashHex.slice(-40);
-}
+// Deterministic treasury proxy — kept as an exported utility but no
+// longer used to display the "vault address" on the leaderboard card.
+// Would confuse users into thinking the vault lived at a hashed 0x...
+// address (0x18fbc0…ad99ec) that isn't actually on-chain anywhere.
 
 export const Leaderboard = memo(function Leaderboard({
   entries,
@@ -80,15 +72,7 @@ export const Leaderboard = memo(function Leaderboard({
   const memberTotal = Math.max(totalMembers ?? 0, entries.length);
   const showingCount = entries.length;
   const isTruncated = memberTotal > showingCount;
-  const [treasuryProxy, setTreasuryProxy] = useState<string>('');
   const isSui = selectedChain === 'sui' || chainConfig?.chainType === 'sui';
-
-  // Derive treasury proxy address (EVM chains only)
-  React.useEffect(() => {
-    if (!isSui) {
-      deriveTreasuryProxyClient().then(setTreasuryProxy);
-    }
-  }, [isSui]);
 
   // Get explorer URL based on chain
   const suiNetwork = (process.env.NEXT_PUBLIC_SUI_NETWORK || 'mainnet') as 'mainnet' | 'testnet';
@@ -96,23 +80,18 @@ export const Leaderboard = memo(function Leaderboard({
     ? chainConfig?.blockExplorer?.[suiNetwork] || `https://suiscan.xyz/${suiNetwork}`
     : EXPLORER_URLS[chainId] || EXPLORER_URLS[11155111];
 
-  // Treasury info varies by chain
+  // Treasury info varies by chain. For EVM chains we show the ACTUAL
+  // vault contract address from POOL_PROXY_WALLETS (canonical config),
+  // NOT the derived-PDA hash (which is a legacy relic that confused
+  // users into thinking the vault lived at a random 0x... address).
   const treasury = isSui
     ? {
         address: chainConfig?.contracts?.[suiNetwork]?.communityPool || '',
         name: 'Pool Contract (USDC)',
       }
-    : treasuryProxy
-      ? {
-          address: treasuryProxy,
-          name: POOL_PROXY_WALLETS[selectedChain || 'sepolia']?.name || 'Pool Treasury',
-        }
-      : proxyWallet
-        ? {
-            address: proxyWallet,
-            name: 'Pool Treasury',
-          }
-        : POOL_PROXY_WALLETS[selectedChain || 'sepolia'] || POOL_PROXY_WALLETS.sepolia;
+    : proxyWallet
+      ? { address: proxyWallet, name: POOL_PROXY_WALLETS[selectedChain || 'sepolia']?.name || 'Pool Treasury' }
+      : POOL_PROXY_WALLETS[selectedChain || 'sepolia'] || POOL_PROXY_WALLETS.sepolia;
 
   // Build explorer link based on chain type
   const contractUrl = isSui
