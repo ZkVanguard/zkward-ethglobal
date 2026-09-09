@@ -60,9 +60,11 @@ function VaultTiltScene({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useCursorSpotlight(ref as RefObject<HTMLElement>);
   return (
-    <div ref={ref} className="vault-tilt-scene max-w-[720px] mx-auto mb-3 sm:mb-4">
-      <div className="vault-scroll-lift rounded-[28px]">
-        <div className="vault-tilt rounded-[28px]">{children}</div>
+    <div ref={ref} className="vault-tilt-scene max-w-[720px] mx-auto mb-3 sm:mb-4 relative">
+      <div className="vault-idle-float relative">
+        <div className="vault-scroll-lift rounded-[28px]">
+          <div className="vault-tilt rounded-[28px]">{children}</div>
+        </div>
       </div>
     </div>
   );

@@ -167,8 +167,16 @@ export async function callX402<T>(url: string, opts: CallOptions): Promise<X402R
   }
 
   // 402 — parse intent + verify against budget + sign + retry.
-  const body402 = (await res.json()) as { intent?: PaymentIntent; error?: string };
-  const intent = body402.intent;
+  // Two shapes supported: legacy { intent: {...} }, and x402 v1 spec
+  // { x402Version: 1, accepts: [{...}] } (our own endpoint emits the
+  // latter after the 2026-09-08 refactor). accepts[0] wins if present.
+  const body402 = (await res.json()) as {
+    intent?: PaymentIntent;
+    accepts?: PaymentIntent[];
+    x402Version?: number;
+    error?: string;
+  };
+  const intent = body402.accepts?.[0] ?? body402.intent;
   if (!intent) {
     return { ok: false, paid: false, reason: 'no payment intent in 402 body' };
   }
