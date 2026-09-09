@@ -85,6 +85,10 @@ interface X402PaymentIntentV2 {
 // Circle USDC HTS token IDs — same as @x402/hedera constants.
 const HEDERA_TESTNET_USDC = '0.0.429274';
 const HEDERA_MAINNET_USDC = '0.0.456858';
+// Facilitator fee-payer account (sponsors the gas). x402.org for testnet,
+// Blocky402 for mainnet. Both advertise these via /supported.
+const HEDERA_TESTNET_FEE_PAYER = '0.0.9185802';
+const HEDERA_MAINNET_FEE_PAYER = '0.0.10571514';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -235,6 +239,7 @@ function buildIntent(request: NextRequest): X402PaymentIntent {
         },
       },
       extra: {
+        feePayer: network === 'hedera:mainnet' ? HEDERA_MAINNET_FEE_PAYER : HEDERA_TESTNET_FEE_PAYER,
         priceModel: 'per-call',
         signalWindow: '5min',
         currency: 'USDC',
@@ -269,7 +274,12 @@ function buildIntentV2(request: NextRequest): X402PaymentIntentV2 {
       asset,
       payTo: getPayTo(),
       maxTimeoutSeconds: 300,
-      extra: { priceModel: 'per-call', signalWindow: '5min', currency: 'USDC' },
+      extra: {
+        feePayer: network === 'hedera:mainnet' ? HEDERA_MAINNET_FEE_PAYER : HEDERA_TESTNET_FEE_PAYER,
+        priceModel: 'per-call',
+        signalWindow: '5min',
+        currency: 'USDC',
+      },
     }],
   };
 }
