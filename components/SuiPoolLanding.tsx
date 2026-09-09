@@ -1,5 +1,6 @@
 'use client';
 
+import type { RefObject } from 'react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@/i18n/routing';
@@ -15,10 +16,57 @@ import { Reveal, LiveIndicator, StatusPill, TrustBadge } from './ui/landing';
 // ease-in-out "slide-and-stop" cadence.
 const SPRING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
-// Cursor spotlight removed — user asked for a static design without the
-// pointer-follow glow. CSS variables --sx/--sy still fall back to (50%,
-// 50%) via the `var(--sx, 50%)` defaults so HeroGraphBg + .vault-tilt
-// simply render at their neutral center position.
+// Cursor spotlight — updates --sx/--sy CSS variables on a container from
+// pointermove so children can drive a 3D tilt effect. rAF-throttled to
+// 60fps; disabled on touch devices + prefers-reduced-motion.
+//
+// Attached to the vault card container ONLY (not the whole hero) so the
+// card feels physical while the hero background stays flat (no
+// pointer-follow spotlight glow — user request).
+import { useReducedMotion } from 'framer-motion';
+
+function useCursorSpotlight<T extends HTMLElement>(ref: React.RefObject<T | null>) {
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (reduce) return;
+    const el = ref.current;
+    if (!el) return;
+    const mq = window.matchMedia('(min-width: 768px) and (pointer: fine)');
+    if (!mq.matches) return;
+    let raf = 0;
+    const onMove = (e: PointerEvent) => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        el.style.setProperty('--sx', `${x}%`);
+        el.style.setProperty('--sy', `${y}%`);
+      });
+    };
+    el.addEventListener('pointermove', onMove);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      cancelAnimationFrame(raf);
+    };
+  }, [ref, reduce]);
+}
+
+// VaultTiltScene — encapsulates the perspective wrapper + the cursor-
+// spotlight hook attached to the card container. Pulling this into its
+// own component lets us mount useCursorSpotlight in one place, scoped
+// to the card only (not the whole hero).
+function VaultTiltScene({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useCursorSpotlight(ref as RefObject<HTMLElement>);
+  return (
+    <div ref={ref} className="vault-tilt-scene max-w-[720px] mx-auto mb-3 sm:mb-4">
+      <div className="vault-scroll-lift rounded-[28px]">
+        <div className="vault-tilt rounded-[28px]">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 // TVL cap enforced by the Move contract. Surfacing "room remaining" on the
 // landing gives visitors a scale anchor without leading with the current
@@ -617,19 +665,12 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
               via .vault-scroll-lift (native CSS scroll-driven animation,
               zero JS, respects reduced-motion). */}
           {/* .vault-tilt-scene → perspective(1200px) container for the
-              cursor-driven tilt below. .vault-scroll-lift keeps its
-              scroll-driven rise + shadow deepen on hero exit. .vault-tilt
-              reads --sx/--sy (already set by useCursorSpotlight) and
-              tilts the card ±2.5°X / ±3.5°Y + shifts a directional
-              highlight across the surface — feels like real hardware
-              catching light as the cursor moves. See globals.css. */}
-          <div className="vault-tilt-scene max-w-[720px] mx-auto mb-3 sm:mb-4">
-            <div className="vault-scroll-lift rounded-[28px]">
-              <div className="vault-tilt rounded-[28px]">
-                <VaultMeter pool={pool} loading={loading} cap={TVL_CAP_USD} />
-              </div>
-            </div>
-          </div>
+              cursor-driven tilt. useCursorSpotlight is attached only to
+              THIS container (not the whole hero) so the card feels 3D
+              without a page-wide pointer-follow background glow. */}
+          <VaultTiltScene>
+            <VaultMeter pool={pool} loading={loading} cap={TVL_CAP_USD} />
+          </VaultTiltScene>
           {/* Live-refresh ticker — proves the auto-refresh cadence is real,
               not marketing copy. Uses useQuery's dataUpdatedAt (client truth). */}
           <div className="max-w-[720px] mx-auto mb-8 sm:mb-10">

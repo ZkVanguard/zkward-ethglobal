@@ -403,9 +403,47 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
   }
 }
 
-/* Vault-meter wrapper — cursor-tilt + highlight overlay removed per
-   design request. Card renders flat with its own drop-shadow. The
-   perspective wrapper is kept so existing markup doesn't need to
-   change, but has no visual effect without the transform child. */
-.vault-tilt-scene { position: relative; }
-.vault-tilt { position: relative; }
+/* ── Vault-meter cursor-tilt + directional highlight ──
+   Card becomes a physical object floating in the hero's perspective
+   space. useCursorSpotlight is scoped to the vault container (not
+   the whole hero) so the CARD tilts but the page background stays
+   flat — no pointer-follow spotlight glow. Reduced-motion + touch
+   devices collapse to flat baseline. */
+.vault-tilt-scene {
+  perspective: 1200px;
+  perspective-origin: 50% 40%;
+  transform-style: preserve-3d;
+}
+.vault-tilt {
+  transform:
+    rotateY(calc((var(--sx, 50%) - 50%) * 0.07))
+    rotateX(calc((var(--sy, 50%) - 50%) * -0.05))
+    translateZ(0);
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+  position: relative;
+}
+.vault-tilt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 60% at var(--sx, 50%) var(--sy, 30%),
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0) 55%
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.7;
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vault-tilt { transform: none !important; transition: none !important; }
+  .vault-tilt::after { opacity: 0 !important; }
+}
+@media (max-width: 767px) {
+  .vault-tilt { transform: none !important; transition: none !important; }
+  .vault-tilt::after { opacity: 0 !important; }
+}
