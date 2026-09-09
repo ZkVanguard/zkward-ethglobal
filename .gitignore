@@ -454,3 +454,13 @@ docs/DEMO_VIDEO_PLATFORM.md
 docs/PRIZE_STRATEGY.md
 docs/submission-drafts.md
 docs/submission-evidence/pr-43-snapshot-2026-09-08.md
+
+# Playwright MCP output — screenshot debris from dashboard/homepage audits
+.playwright-mcp/
+
+# Ad-hoc screenshots left in repo root during design audits.
+# Scope to repo root only so we don't accidentally hide legit committed
+# images under public/, docs/, etc.
+/*.png
+/*.jpeg
+/*.webp

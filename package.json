@@ -133,6 +133,7 @@
     "openai": "^4.77.3"
   },
   "devDependencies": {
+    "@hiero-ledger/sdk": "^2.87.0",
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.2",
     "@nomicfoundation/hardhat-ethers": "^3.1.2",
     "@nomicfoundation/hardhat-network-helpers": "^3.0.4",
@@ -151,6 +152,9 @@
     "@types/react-dom": "^19.2.4",
     "@typescript-eslint/eslint-plugin": "^6.16.0",
     "@typescript-eslint/parser": "^6.16.0",
+    "@x402/core": "^2.25.0",
+    "@x402/fetch": "^2.25.0",
+    "@x402/hedera": "^2.25.0",
     "autoprefixer": "^10.5.4",
     "chai": "^4.2.0",
     "cross-env": "^10.1.0",
