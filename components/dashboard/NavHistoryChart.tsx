@@ -231,14 +231,14 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px] sm:text-[12px]">
+        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[11px] sm:text-[12px] flex-shrink-0 min-w-0">
           {data?.peak && (
-            <span className="text-label-tertiary">
-              Peak <strong className="text-[#1d1d1f] font-mono">${data.peak.sharePrice.toFixed(4)}</strong>
+            <span className="text-label-tertiary whitespace-nowrap">
+              Peak <strong className="text-label-primary font-mono">${data.peak.sharePrice.toFixed(4)}</strong>
             </span>
           )}
           {change !== null && (
-            <span className={change >= 0 ? 'text-green-700' : 'text-red-700'}>
+            <span className={`whitespace-nowrap ${change >= 0 ? 'text-green-700' : 'text-red-700'}`}>
               {change >= 0 ? '+' : ''}{change.toFixed(2)}% window
             </span>
           )}
