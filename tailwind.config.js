@@ -40,6 +40,14 @@ module.exports = {
           gray5: '#E5E5EA',
           gray6: '#F2F2F7',
         },
+        // Chain accent palette — dedicated tokens so we stop sprinkling
+        // raw #00A79F throughout the codebase. hedera.teal matches the
+        // Hedera brand teal; use `text-teal-700` for small text (WCAG
+        // contrast rule same as ios-green).
+        hedera: {
+          teal: '#00A79F',
+          tealHover: '#009288',
+        },
         // Text Colors (Light Mode) - Enhanced Contrast
         label: {
           primary: '#1D1D1F',

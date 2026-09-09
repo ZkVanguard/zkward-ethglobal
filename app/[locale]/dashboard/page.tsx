@@ -274,11 +274,6 @@ export default function DashboardPage() {
   // SUI-only mode: portfolio asset universe is fixed to SUI/USDC.
   const portfolioAssets = ['SUI', 'USDC'];
 
-  // Debug notification state changes
-  useEffect(() => {
-    logger.debug('Notification state changed', { component: 'DashboardPage', data: notification });
-  }, [notification]);
-
   // useCallback stabilises the refs so memoized children (ActiveHedges,
   // MobileTabBar, etc.) don't re-render on every parent state change
   // (notification, agentMessage, etc.). Setter fns from useState are
@@ -378,9 +373,10 @@ export default function DashboardPage() {
   const handleAgentAnalysis = async (market: PredictionMarket) => {
     logger.info('🤖 Triggering AI Agent Analysis', { market: market.question });
 
-    // Show loading message
+    // Show loading message (icons rendered in the alert component; keep
+    // the text emoji-free so it composes with lucide icons upstream).
     setAgentMessage(
-      '🤖 AI Agents Analyzing...\n\nRisk Agent, Hedging Agent, and Settlement Agent are evaluating your portfolio...'
+      'Analyzing…\n\nRisk, Hedging, and Settlement agents are evaluating your portfolio.'
     );
 
     try {
@@ -420,13 +416,13 @@ export default function DashboardPage() {
       const reasoning =
         typeof data.reasoning === 'string' ? data.reasoning.slice(0, 200) : 'Analysis complete';
 
-      const msg = `🤖 ${agentName}\n\nAction: ${data.action}\nConfidence: ${Math.round(data.confidence * 100)}%\nUrgency: ${data.urgency}\n\n• ${reasoning}`;
+      const msg = `${agentName}\n\nAction: ${data.action}\nConfidence: ${Math.round(data.confidence * 100)}%\nUrgency: ${data.urgency}\n\n${reasoning}`;
 
       setAgentMessage(msg);
-      logger.info('✅ AI Analysis Complete', { action: data.action, confidence: data.confidence });
+      logger.info('AI analysis complete', { action: data.action, confidence: data.confidence });
     } catch (error) {
-      logger.error('❌ AI Analysis Failed', { error });
-      setAgentMessage('❌ AI Analysis Error\n\nPlease check console for details.');
+      logger.error('AI analysis failed', { error });
+      setAgentMessage('Analysis failed.\n\nCheck the console for details or try again in a moment.');
     }
 
     // Auto-dismiss after 15 seconds
@@ -708,9 +704,11 @@ export default function DashboardPage() {
         {/* Main Content */}
         <main className="flex-1 min-h-[calc(100vh-52px)] pt-12 lg:pt-0 pb-[calc(52px+env(safe-area-inset-bottom))] lg:pb-0">
           <div className="max-w-[1280px] mx-auto px-3 sm:px-5 py-3 sm:py-6 lg:px-8 lg:py-10">
-            {/* Page Header - Desktop only */}
+            {/* Page Header — desktop-only large title. Uses the design
+                token `text-large-title` (34px, per-Apple line-height +
+                tracking). Sentence-case, tight tracking, no gradient. */}
             <div className="hidden lg:block mb-8">
-              <h1 className="text-[34px] font-bold text-label-primary tracking-[-0.02em] leading-[1.1]">
+              <h1 className="text-large-title text-label-primary tracking-[-0.02em]">
                 {[...navItems, ...platformItems].find((n) => n.id === activeNav)?.label}
               </h1>
             </div>
@@ -741,11 +739,11 @@ export default function DashboardPage() {
         moreIcon={MoreHorizontal}
       />
 
-      {/* Notification Toast */}
+      {/* Notification Toast — token-based, no raw Tailwind grays */}
       {notification && (
-        <div className="fixed top-20 lg:top-[68px] left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300 max-w-md">
-          <div className="flex items-start gap-3 px-5 py-4 bg-gray-900 text-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-            <div className="w-2 h-2 mt-1.5 bg-green-400 rounded-full animate-pulse flex-shrink-0" />
+        <div className="fixed top-20 lg:top-[68px] left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300 max-w-md px-4">
+          <div className="flex items-start gap-3 px-5 py-4 bg-label-primary text-white rounded-2xl shadow-ios-3">
+            <div className="w-2 h-2 mt-1.5 bg-ios-green rounded-full animate-pulse flex-shrink-0" />
             <p className="text-sm font-medium whitespace-pre-line leading-relaxed">
               {notification}
             </p>
@@ -813,19 +811,17 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* Chat FAB - Hidden when chat is open */}
+      {/* Chat FAB — hidden when chat is open. Positioned above mobile tab
+          bar on small screens, bottom-right on desktop. */}
       {!showChat && (
         <button
           onClick={() => setShowChat(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-ios-blue text-white rounded-full shadow-[0_8px_30px_rgba(0,122,255,0.3)] hover:opacity-90 hover:scale-105 transition-all flex items-center justify-center"
+          className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] right-4 lg:bottom-6 lg:right-6 z-40 w-12 h-12 lg:w-14 lg:h-14 bg-ios-blue hover:bg-ios-blueHover text-white rounded-full shadow-ios-3 hover:shadow-ios-3 transition-all duration-200 flex items-center justify-center active:scale-[0.96]"
+          aria-label="Open AI assistant"
         >
-          <MessageSquare className="w-6 h-6" />
+          <MessageSquare className="w-5 h-5 lg:w-6 lg:h-6" />
         </button>
       )}
-
-      {/* Swap Modal and Manual Hedge Modal are Cronos/EVM-bound and disabled
-          in SUI-only mode. Hedging is driven by the SUI Community Pool +
-          Bluefin auto-hedge cron instead. */}
 
       {/* Settings Modal */}
       {settingsOpen && (
@@ -883,22 +879,8 @@ export default function DashboardPage() {
               </Card>
             </div>
 
-            {/* Agent Alert */}
-            {agentMessage && (
-              <div className="p-4 sm:p-6 bg-ios-blue/5 border border-ios-blue/20 rounded-[24px]">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-ios-blue rounded-[18px] flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-label-primary mb-1">AI Agent Alert</h3>
-                    <p className="text-label-quaternary text-sm sm:text-base whitespace-pre-line">
-                      {agentMessage}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Agent Alert — shared component (see AgentAlert below) */}
+            <AgentAlert message={agentMessage} onDismiss={() => setAgentMessage(null)} />
           </div>
         );
 
@@ -949,19 +931,7 @@ export default function DashboardPage() {
               </Card>
             )}
 
-            {agentMessage && (
-              <div className="p-4 sm:p-6 bg-ios-blue/5 border border-ios-blue/20 rounded-[24px]">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-ios-blue rounded-[18px] flex items-center justify-center">
-                    <Bot className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-label-primary mb-1">Latest Analysis</h3>
-                    <p className="text-label-quaternary whitespace-pre-line">{agentMessage}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <AgentAlert message={agentMessage} onDismiss={() => setAgentMessage(null)} />
           </div>
         );
 
@@ -1051,18 +1021,21 @@ export default function DashboardPage() {
   }
 }
 
-// Reusable Card component
+// Reusable Card component — unified radius (2xl mobile, 3xl desktop),
+// softer border + shadow so panels feel like paper on a light background,
+// not stamped-out modal boxes. Uses design tokens throughout.
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      className={`bg-white rounded-[20px] sm:rounded-[24px] shadow-sm border border-black/5 overflow-hidden ${className}`}
+    <section
+      className={`bg-white rounded-2xl sm:rounded-3xl border border-label-primary/[0.06] shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] overflow-hidden ${className}`}
     >
       {children}
-    </div>
+    </section>
   );
 }
 
-// Card Header component
+// Card Header — tightened padding scale, consistent title size that scales
+// on desktop, subtitle uses text-tertiary (readable) not text-quaternary.
 function CardHeader({
   title,
   subtitle,
@@ -1075,39 +1048,96 @@ function CardHeader({
   badge?: React.ReactNode;
 }) {
   return (
-    <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-b border-black/5">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-[17px] sm:text-[20px] font-semibold text-label-primary tracking-[-0.01em]">
+    <header className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-label-primary/[0.06]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base sm:text-lg font-semibold text-label-primary tracking-[-0.01em]">
               {title}
             </h2>
             {badge}
           </div>
           {subtitle && (
-            <p className="text-[12px] sm:text-[13px] text-label-quaternary mt-0.5">{subtitle}</p>
+            <p className="text-xs sm:text-sm text-label-tertiary mt-1">{subtitle}</p>
           )}
         </div>
         {action}
       </div>
-    </div>
+    </header>
   );
 }
 
-// Badge component
-function Badge({ children, color }: { children: React.ReactNode; color: 'green' | 'blue' | 'teal' }) {
-  const colors = {
+// AgentAlert — shared for Overview + AI Agents tabs. Dismissable so users
+// can clear it manually instead of waiting for the auto-timeout. Uses
+// design tokens throughout (was raw ios-blue/5, ios-blue/20 with
+// hardcoded pixel radii and mixed icon sizes).
+function AgentAlert({
+  message,
+  onDismiss,
+}: {
+  message: string | null;
+  onDismiss?: () => void;
+}) {
+  if (!message) return null;
+  return (
+    <aside className="p-4 sm:p-6 bg-ios-blue/5 border border-ios-blue/15 rounded-2xl">
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 sm:w-11 sm:h-11 bg-ios-blue rounded-ios-xl flex items-center justify-center flex-shrink-0 shadow-ios-1">
+          <Bot className="w-5 h-5 sm:w-5 sm:h-5 text-white" strokeWidth={2.2} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <h3 className="font-semibold text-label-primary text-sm sm:text-base">
+              Agent update
+            </h3>
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                className="p-1 -m-1 text-label-quaternary hover:text-label-secondary transition-colors"
+                aria-label="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <p className="text-label-secondary text-sm sm:text-[15px] whitespace-pre-line leading-relaxed">
+            {message}
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// Badge component — token-based colors, soft-tint variant available.
+// WCAG-safe: on colored bg, text-white; on white bg, tint + colored text.
+function Badge({
+  children,
+  color,
+  variant = 'solid',
+}: {
+  children: React.ReactNode;
+  color: 'green' | 'blue' | 'teal';
+  variant?: 'solid' | 'soft';
+}) {
+  const solid = {
     green: 'bg-ios-green text-white',
     blue: 'bg-ios-blue text-white',
-    // Hedera / Privy accent
-    teal: 'bg-[#00A79F] text-white',
-  };
-
+    teal: 'bg-hedera-teal text-white',
+  } as const;
+  const soft = {
+    green: 'bg-ios-green/10 text-green-700',
+    blue: 'bg-ios-blue/10 text-blue-700',
+    teal: 'bg-hedera-teal/10 text-teal-700',
+  } as const;
+  const cls = variant === 'soft' ? soft[color] : solid[color];
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full ${colors[color]}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded-full ${cls}`}
     >
-      {color === 'green' && <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
+      {color === 'green' && variant === 'solid' && (
+        <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+      )}
       {children}
     </span>
   );
