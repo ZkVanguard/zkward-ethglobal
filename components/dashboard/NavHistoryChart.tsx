@@ -74,31 +74,27 @@ async function fetchHederaHistoryViaAdapter(): Promise<NavHistoryResponse | null
     errors?: Array<{ message: string }>;
   };
   if (j.errors?.length || !j.data?.navHistory?.length) return null;
-  // Present-time shares as denominator for sharePrice — trader mostly runs
-  // a stable share count between deposits, so this is a fair approximation
-  // for the chart. Every underlying navUsd point is exact + HCS-anchored.
-  const totalSharesMicros = BigInt(j.data.pools?.[0]?.totalShares ?? '1000000');
-  const shares = Number(totalSharesMicros) / 1e6 || 1;
-  // HCS topic accumulates NAV snapshots across BOTH the old V1 vault (which
-  // held ~$1000 for a while) AND the current V2 vault. Dividing old-pool
-  // NAV by current share count creates a fake historical peak (e.g. $1000
-  // / 70 shares = $14.46 spurious peak on the chart). Filter out any point
-  // whose navUsd is > 10x the current pool NAV — that's outside any
-  // plausible one-pool trajectory.
+  // HCS topic accumulates NAV snapshots across BOTH the old V1 vault
+  // and the current V2 vault. Filter to points ≤10x current NAV (drops
+  // V1-era leftovers cleanly; V1 held ~$1000, V2 currently ~$70).
   const currentNavUsd = Number(j.data.navHistory[0]?.totalNavUsd ?? 0) / 1e6;
   const navCeiling = currentNavUsd > 0 ? currentNavUsd * 10 : Infinity;
+  // SimpleUsdcVaultV2 uses ERC-4626-lite virtual-offset math that keeps
+  // share price stable at $1.00 across deposits/withdrawals (no yield
+  // accrual on-chain). Dividing historical navUsd by CURRENT share count
+  // produced misleading "prices" that looked like a share-price dip
+  // when it was just historical NAV growth. Since the true share price
+  // never leaves $1.00 for this vault, render it as a flat line — this
+  // matches the actual on-chain invariant.
   const points = j.data.navHistory
     .slice()
     .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
     .filter((s) => (Number(s.totalNavUsd) / 1e6) <= navCeiling)
-    .map((s) => {
-      const navUsd = Number(s.totalNavUsd) / 1e6;
-      return {
-        t: new Date(Number(s.timestamp) * 1000).toISOString(),
-        navUsd,
-        sharePrice: navUsd / shares,
-      };
-    });
+    .map((s) => ({
+      t: new Date(Number(s.timestamp) * 1000).toISOString(),
+      navUsd: Number(s.totalNavUsd) / 1e6,
+      sharePrice: 1,
+    }));
   const first = points[0];
   const last = points[points.length - 1];
   return {
