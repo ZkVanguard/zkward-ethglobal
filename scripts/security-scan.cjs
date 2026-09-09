@@ -34,11 +34,20 @@ function walk(dir, acc) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
   for (const e of entries) {
+    // Skip symlinks — they can point into bun/npm caches under
+    // ~/.bun/install/cache, dragging vendor code into the tracked-source
+    // scan (which is designed to inspect first-party code only).
+    if (e.isSymbolicLink()) continue;
     if (e.isDirectory()) {
       if (SKIP_DIRS.has(e.name)) continue;
       walk(path.join(dir, e.name), acc);
     } else if (e.isFile() && EXTS.has(path.extname(e.name))) {
-      acc.push(path.relative(process.cwd(), path.join(dir, e.name)));
+      const full = path.join(dir, e.name);
+      // Path-based safety net for cache indirection: skip anything
+      // whose resolved path lives under a bun/npm/pnpm cache dir even
+      // if we somehow entered it via symlink hop.
+      if (/[\\/]\.(bun|npm|pnpm)[\\/]/.test(full)) continue;
+      acc.push(path.relative(process.cwd(), full));
     }
   }
   return acc;
