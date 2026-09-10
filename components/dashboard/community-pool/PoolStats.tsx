@@ -212,7 +212,7 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
           <Metric
             size="mobile-strip"
             value={`$${projectedShare.toFixed(4)}`}
-            label="Proj. Share"
+            label="Strategy NAV"
             valueColorClass={pnlColor(projectedPct ?? 0)}
           />
         ) : (
@@ -231,7 +231,7 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
           <Metric
             size="mobile-strip"
             value={signedPct(projectedPct)}
-            label="Proj. 24h @ 2×"
+            label="24h @ 2×"
             valueColorClass={pnlColor(projectedPct)}
           />
         )}
@@ -273,7 +273,7 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
           <Metric
             size="desktop"
             value={signedPct(projectedPct)}
-            label="Projected 24h @ 2× (if AI executed)"
+            label="Strategy Return · 24h @ 2×"
             valueColorClass={pnlColor(projectedPct)}
           />
         )}
@@ -281,7 +281,7 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
           <Metric
             size="desktop"
             value={`$${projectedShare.toFixed(4)}`}
-            label="Projected Share Price (hypothetical)"
+            label="Strategy NAV · 24h @ 2×"
             valueColorClass={pnlColor(projectedPct ?? 0)}
           />
         )}

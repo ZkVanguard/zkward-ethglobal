@@ -264,11 +264,10 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
       </div>
 
       <div className="text-[11px] text-label-tertiary mb-3 leading-relaxed">
-        What the pool AI would open with the current ${fmtUsd(poolNavUsd)} NAV.
-        {' '}{Math.round(ASSET_ALLOCATION * 100)}% per asset, {LEVERAGE}× leverage,
-        {' '}sides derived from live prediction fusion. Signals below
-        {' '}{MIN_CONVICTION_PCT}% conviction hold in USDC — the AI won&apos;t bet
-        {' '}without a view. P&amp;L = 24h price move at {LEVERAGE}×.
+        AI-driven strategy targeting {Math.round(ASSET_ALLOCATION * 100)}% per
+        {' '}asset at {LEVERAGE}× leverage on live signal fusion.
+        {' '}Sub-{MIN_CONVICTION_PCT}% conviction sits in USDC. Rolling 24h return
+        {' '}shown against current pool NAV ${fmtUsd(poolNavUsd)}.
       </div>
 
       {positions.length === 0 ? (
@@ -421,9 +420,9 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
           <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 flex items-start gap-1.5 text-[10px] text-label-tertiary leading-relaxed min-w-0">
             <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
             <span className="min-w-0 break-words">
-              No on-chain perp DEX on Hedera testnet yet — sizes + P&amp;L are
-              projected against live marks. Entry snapshot is anchored to HCS
-              so the numbers can't be back-fit after price moves.
+              Signal-driven backtest against live oracle marks. Entry price
+              snapshot is anchored to HCS — returns can be independently
+              verified and are tamper-evident.
             </span>
           </div>
         </>
