@@ -50,7 +50,8 @@ async function getChain(chain: 'hedera' | 'sepolia'): Promise<ChainConfig> {
   return {
     usdc: SEPOLIA_CONTRACT_ADDRESSES.testnet.usdtToken,
     vault: SEPOLIA_CONTRACT_ADDRESSES.testnet.communityPool,
-    rpc: (process.env.SEPOLIA_RPC || 'https://sepolia.drpc.org').trim(),
+    // publicnode.com serves sepolia on the free tier; drpc.org does not.
+    rpc: (process.env.SEPOLIA_RPC || 'https://ethereum-sepolia-rpc.publicnode.com').trim(),
     keyEnvVar: 'PRIVATE_KEY',
     explorerTxUrl: (h) => `https://sepolia.etherscan.io/tx/${h}`,
     // Sepolia — let ethers autoscale gas; just cap the limit.
