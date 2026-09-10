@@ -18,7 +18,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Copy, Check, ExternalLink, Zap, Database, Activity, Anchor, Shield } from 'lucide-react';
 import { useState } from 'react';
 
-const STUDIO_URL = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.1.1';
+// v0.2.0 is the populated subgraph — indexes both CommunityPool (0x07d6…1086)
+// and SimpleUsdcVault (0x68ee…111b). v0.1.1 was subgraph-only-schema (empty).
+const STUDIO_URL = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0';
 const HEDERA_URL = '/api/subgraph/hedera';
 const SEPOLIA_POOL_ADDR = '0x07d68C2828F35327d12a7Ba796cCF3f12F8A1086';
 const SEPOLIA_POOL_ETHERSCAN = `https://sepolia.etherscan.io/address/${SEPOLIA_POOL_ADDR}#writeContract`;
