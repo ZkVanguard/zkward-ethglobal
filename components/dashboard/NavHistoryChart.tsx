@@ -217,10 +217,10 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
 
   return (
     <section className="bg-white border border-black/5 rounded-2xl p-3 sm:p-5 min-w-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <TrendingUp className="w-4 h-4 text-[#1d1d1f] flex-shrink-0" />
-          <h2 className="text-base sm:text-[17px] font-semibold text-[#1d1d1f]">Share price history</h2>
+      <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-x-3 gap-y-1 mb-3 sm:mb-4 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <TrendingUp className="w-4 h-4 text-label-primary flex-shrink-0" />
+          <h2 className="text-base sm:text-[17px] font-semibold text-label-primary">Share price history</h2>
           {usedFallback && (
             <span
               className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
@@ -231,14 +231,16 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
             </span>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[11px] sm:text-[12px] flex-shrink-0 min-w-0">
+        {/* Metric row — wraps under the title on mobile, sits inline on sm+.
+            No shrink/hidden tricks — full labels always visible. */}
+        <div className="flex items-baseline gap-x-3 text-[11px] sm:text-[12px] whitespace-nowrap">
           {data?.peak && (
-            <span className="text-label-tertiary whitespace-nowrap">
+            <span className="text-label-tertiary">
               Peak <strong className="text-label-primary font-mono">${data.peak.sharePrice.toFixed(4)}</strong>
             </span>
           )}
           {change !== null && (
-            <span className={`whitespace-nowrap ${change >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            <span className={change >= 0 ? 'text-green-700' : 'text-red-700'}>
               {change >= 0 ? '+' : ''}{change.toFixed(2)}% window
             </span>
           )}

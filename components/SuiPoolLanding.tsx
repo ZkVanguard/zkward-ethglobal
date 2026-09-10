@@ -648,7 +648,7 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
               Vault Meter below is the visual signature). Space Grotesk
               display face gives numbers + short phrases distinctive shape. */}
           <h1
-            className="font-display text-center text-[38px] xs:text-[44px] sm:text-[54px] md:text-[64px] lg:text-[80px] font-semibold tracking-[-0.04em] leading-[0.96] text-label-primary mb-4 sm:mb-6"
+            className="font-display text-center text-[38px] xs:text-[44px] sm:text-[54px] md:text-[62px] lg:text-[68px] xl:text-[80px] font-semibold tracking-[-0.04em] leading-[0.96] text-label-primary mb-4 sm:mb-6"
             style={{ textWrap: 'balance', hyphens: 'none', overflowWrap: 'normal' }}
           >
             Your USDC.
