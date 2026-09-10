@@ -208,12 +208,25 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
       },
     },
     scales: {
-      x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+      x: {
+        grid: { display: false },
+        // Fewer x ticks on narrow charts — chart.js exposes chart.width via
+        // scale.chart in the ticks callback context but not the config.
+        // Use maxTicksLimit: 4 (was 6) which auto-shrinks on narrow, keeps
+        // desktop readable via the same limit acting as a soft cap.
+        ticks: { maxTicksLimit: 4, font: { size: 10 } },
+      },
       y: {
         grid: { color: 'rgba(0,0,0,0.05)' },
         ticks: {
           font: { size: 10 },
-          callback: (v) => `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: isNavMode ? 0 : 2 })}`,
+          maxTicksLimit: 5,
+          // Compact currency in NAV mode ($60K, $1.2M) — 4-digit dollar values
+          // take too much y-axis pixel budget on 375px viewports. Share-price
+          // mode stays at 2 decimals since values hover around $1.00.
+          callback: (v) => isNavMode
+            ? '$' + Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(v))
+            : '$' + Number(v).toFixed(2),
         },
       },
     },
@@ -244,7 +257,10 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
             </span>
           )}
         </div>
-        <div className="flex items-baseline gap-x-3 text-[11px] sm:text-[12px] whitespace-nowrap">
+        {/* flex-wrap on mobile so 'Peak' + 'First → Now' can stack instead of
+            being forced onto one line + clipping. gap-y-1 gives a bit of
+            breathing room between wrapped lines. */}
+        <div className="flex items-baseline flex-wrap gap-x-3 gap-y-1 text-[11px] sm:text-[12px]">
           {data?.peak && (
             <span className="text-label-tertiary">
               Peak <strong className="text-label-primary font-mono">
@@ -292,7 +308,11 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
         ))}
       </div>
 
-      <div className="h-48 sm:h-64 relative">
+      {/* Chart height: 176px mobile / 224px tablet / 256px desktop. Chart.js
+          scales fill this container width (responsive: true, maintain-
+          AspectRatio: false). Height picked so mobile shows a clear
+          trend line without dominating the viewport. */}
+      <div className="h-44 sm:h-56 md:h-64 relative">
         {loading && !data && (
           <div className="absolute inset-0 flex items-center justify-center text-label-tertiary">
             <Loader2 className="w-4 h-4 animate-spin" />
