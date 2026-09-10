@@ -162,16 +162,24 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
   }
   const usedFallback = (data as { fallbackFrom?: 'sui' } | undefined)?.fallbackFrom === 'sui';
 
+  // Hedera SimpleUsdcVaultV2 uses ERC-4626-lite math with zero on-chain
+  // yield accrual — share price is mathematically pinned to $1.00 forever
+  // (every $1 deposit = 1 share). Plotting share price for Hedera is a
+  // trivially flat line. Plot total NAV instead: deposits/withdrawals show
+  // as real steps, which is the metric that actually changes.
+  const plotMode: 'sharePrice' | 'navUsd' = chain === 'hedera' ? 'navUsd' : 'sharePrice';
+  const isNavMode = plotMode === 'navUsd';
+
   const chart = useMemo(() => {
     if (!data || data.points.length === 0) return null;
     const labels = data.points.map((p) => new Date(p.t).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric',
     }));
-    const values = data.points.map((p) => p.sharePrice);
+    const values = data.points.map((p) => (isNavMode ? p.navUsd : p.sharePrice));
     return {
       labels,
       datasets: [{
-        label: 'Share price',
+        label: isNavMode ? 'Total NAV (USD)' : 'Share price',
         data: values,
         borderColor: 'rgb(29, 29, 31)',
         backgroundColor: 'rgba(29, 29, 31, 0.05)',
@@ -182,7 +190,7 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
         borderWidth: 2,
       }],
     };
-  }, [data]);
+  }, [data, isNavMode]);
 
   const options: ChartOptions<'line'> = useMemo(() => ({
     responsive: true,
@@ -194,7 +202,7 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
           label: (ctx) => {
             const p = data?.points[ctx.dataIndex];
             if (!p) return '';
-            return `$${p.sharePrice.toFixed(4)} · NAV $${p.navUsd.toFixed(2)}`;
+            return `NAV $${p.navUsd.toFixed(2)} · share $${p.sharePrice.toFixed(4)}`;
           },
         },
       },
@@ -205,14 +213,16 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
         grid: { color: 'rgba(0,0,0,0.05)' },
         ticks: {
           font: { size: 10 },
-          callback: (v) => `$${Number(v).toFixed(2)}`,
+          callback: (v) => `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: isNavMode ? 0 : 2 })}`,
         },
       },
     },
-  }), [data]);
+  }), [data, isNavMode]);
 
   const change = data?.first && data?.last
-    ? ((data.last.sharePrice - data.first.sharePrice) / data.first.sharePrice) * 100
+    ? isNavMode && data.first.navUsd > 0
+      ? ((data.last.navUsd - data.first.navUsd) / data.first.navUsd) * 100
+      : ((data.last.sharePrice - data.first.sharePrice) / data.first.sharePrice) * 100
     : null;
 
   return (
@@ -223,7 +233,7 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
       <div className="flex flex-col gap-y-1 mb-3 sm:mb-4 min-w-0">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <TrendingUp className="w-4 h-4 text-label-primary flex-shrink-0" />
-          <h2 className="text-base sm:text-[17px] font-semibold text-label-primary">Share price history</h2>
+          <h2 className="text-base sm:text-[17px] font-semibold text-label-primary">{isNavMode ? 'Total NAV history' : 'Share price history'}</h2>
           {usedFallback && (
             <span
               className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
@@ -237,7 +247,11 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
         <div className="flex items-baseline gap-x-3 text-[11px] sm:text-[12px] whitespace-nowrap">
           {data?.peak && (
             <span className="text-label-tertiary">
-              Peak <strong className="text-label-primary font-mono">${data.peak.sharePrice.toFixed(4)}</strong>
+              Peak <strong className="text-label-primary font-mono">
+                ${isNavMode
+                  ? (data.points.reduce((a, b) => (b.navUsd > a.navUsd ? b : a), data.points[0]).navUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : data.peak.sharePrice.toFixed(4)}
+              </strong>
             </span>
           )}
           {change !== null && (
@@ -279,8 +293,19 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
         )}
       </div>
       <p className="text-[11px] text-label-tertiary mt-3">
-        Every point is a snapshot from <code className="bg-[#f5f5f7] px-1.5 py-0.5 rounded">community_pool_nav_history</code>,
-        bucket-averaged. Share price is NAV / total shares — pool inception at $1.00.
+        {isNavMode ? (
+          <>
+            Total dollars in the vault, per HCS-anchored NAV snapshot.
+            {' '}Share price stays at $1.00 by design (ERC-4626-lite math, no
+            {' '}on-chain yield accrual) — NAV is the metric that moves.
+          </>
+        ) : (
+          <>
+            Every point is a snapshot from{' '}
+            <code className="bg-[#f5f5f7] px-1.5 py-0.5 rounded">community_pool_nav_history</code>,
+            {' '}bucket-averaged. Share price is NAV / total shares — pool inception at $1.00.
+          </>
+        )}
       </p>
     </section>
   );
