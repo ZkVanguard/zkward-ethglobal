@@ -171,7 +171,16 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
     const notional = poolNavUsd * ASSET_ALLOCATION;
     const marginPerLeg = notional / LEVERAGE;
     return (['BTC', 'ETH', 'SUI'] as Symbol[]).map((symbol) => {
-      const entryPrice = entriesRef.current![symbol];
+      // Entry = mark ÷ (1 + 24h change) — derives a "if we'd opened this
+      // yesterday" reference price from live 24h delta. Makes P&L a
+      // meaningful retrospective on real price movement (0 return when a
+      // position opens *now* is technically correct but unreadable in a
+      // demo). Falls back to snapped page-open price if 24h delta unavailable.
+      const mark = prices[symbol]?.price;
+      const change24h = prices[symbol]?.change24h;
+      const entryPrice = mark && typeof change24h === 'number' && (1 + change24h) > 0
+        ? mark / (1 + change24h)
+        : entriesRef.current![symbol];
       const sig = signals[symbol];
       return {
         symbol,
@@ -185,7 +194,7 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
         signalDirection: sig?.direction ?? 'NEUTRAL',
       };
     });
-  }, [poolNavUsd, loaded, signals]);
+  }, [poolNavUsd, loaded, signals, prices]);
 
   useEffect(() => {
     if (attestRef.current) return;
@@ -238,7 +247,8 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
       <div className="text-[11px] text-label-tertiary mb-3 leading-relaxed">
         What the pool AI would open with the current ${fmtUsd(poolNavUsd)} NAV.
         {' '}{Math.round(ASSET_ALLOCATION * 100)}% per asset, {LEVERAGE}× leverage,
-        {' '}sides derived from live prediction fusion. Delta since page open.
+        {' '}sides derived from live prediction fusion. P&amp;L = 24h price move
+        {' '}at {LEVERAGE}× on the signal-picked side.
       </div>
 
       {positions.length === 0 ? (
@@ -251,7 +261,7 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
             <StatCell label="Notional" value={`$${fmtUsd(totals.notional)}`} />
             <StatCell label="Margin" value={`$${fmtUsd(totals.margin)}`} />
             <StatCell
-              label="Projected P&L"
+              label="24h P&L @ 2×"
               value={`${totals.upnl >= 0 ? '+' : ''}$${fmtUsd(totals.upnl)}`}
               color={totals.upnl >= 0 ? '#34C759' : '#FF3B30'}
             />
