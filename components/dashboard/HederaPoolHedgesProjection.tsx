@@ -30,7 +30,12 @@ const ACCENT = '#00A79F';
 const PRICE_POLL_MS = 5000;
 
 type Symbol = 'BTC' | 'ETH' | 'SUI';
-type Side = 'LONG' | 'SHORT';
+type Side = 'LONG' | 'SHORT' | 'HOLD';
+
+// Below this confidence, treat signal as no-conviction → HOLD (no position).
+// Real AI shouldn't put on a directional bet with a weak signal. Matches
+// the SIGNAL_FLIP_MIN_CONF default in CLAUDE.md's defense stack.
+const MIN_CONVICTION_PCT = 55;
 
 interface PriceRow { price: number; change24h?: number }
 interface PriceMap { [k: string]: PriceRow }
@@ -92,8 +97,14 @@ async function fetchSignals(): Promise<SignalMap> {
     const out: SignalMap = {};
     for (const [sym, p] of Object.entries(j.predictions ?? {})) {
       const direction = p.direction ?? 'NEUTRAL';
-      const side: Side = direction === 'DOWN' ? 'SHORT' : 'LONG';
-      out[sym] = { side, confidence: Math.round(p.confidence ?? 0), direction };
+      const confidence = Math.round(p.confidence ?? 0);
+      // NEUTRAL or below-threshold → HOLD. No-conviction bets are the
+      // opposite of what an AI-managed vault should do; would rather sit
+      // in USDC than open a directional leg on weak signals.
+      let side: Side;
+      if (direction === 'NEUTRAL' || confidence < MIN_CONVICTION_PCT) side = 'HOLD';
+      else side = direction === 'DOWN' ? 'SHORT' : 'LONG';
+      out[sym] = { side, confidence, direction };
     }
     return out;
   } catch {
@@ -168,25 +179,28 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
 
   const positions: ProjectedPosition[] = useMemo(() => {
     if (!entriesRef.current) return [];
-    const notional = poolNavUsd * ASSET_ALLOCATION;
-    const marginPerLeg = notional / LEVERAGE;
+    const notionalIfActive = poolNavUsd * ASSET_ALLOCATION;
     return (['BTC', 'ETH', 'SUI'] as Symbol[]).map((symbol) => {
       // Entry = mark ÷ (1 + 24h change) — derives a "if we'd opened this
       // yesterday" reference price from live 24h delta. Makes P&L a
-      // meaningful retrospective on real price movement (0 return when a
-      // position opens *now* is technically correct but unreadable in a
-      // demo). Falls back to snapped page-open price if 24h delta unavailable.
+      // meaningful retrospective on real price movement.
       const mark = prices[symbol]?.price;
       const change24h = prices[symbol]?.change24h;
       const entryPrice = mark && typeof change24h === 'number' && (1 + change24h) > 0
         ? mark / (1 + change24h)
         : entriesRef.current![symbol];
       const sig = signals[symbol];
+      // Missing signal defaults to HOLD (was LONG — that was a bad
+      // default; a no-signal state is not conviction to buy).
+      const side: Side = sig?.side ?? 'HOLD';
+      // HOLD → capital sits in USDC, contributes zero notional / margin / P&L.
+      const notional = side === 'HOLD' ? 0 : notionalIfActive;
+      const marginPerLeg = notional / LEVERAGE;
       return {
         symbol,
-        side: sig?.side ?? 'LONG',
+        side,
         entryPrice,
-        sizeToken: notional / entryPrice,
+        sizeToken: notional > 0 ? notional / entryPrice : 0,
         notionalUsd: notional,
         marginUsd: marginPerLeg,
         leverage: LEVERAGE,
@@ -215,15 +229,20 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
     let notional = 0;
     let margin = 0;
     let upnl = 0;
+    let holdUsd = 0;
     for (const p of positions) {
+      if (p.side === 'HOLD') {
+        holdUsd += poolNavUsd * ASSET_ALLOCATION;
+        continue;
+      }
       const mark = prices[p.symbol]?.price ?? p.entryPrice;
       notional += p.notionalUsd;
       margin += p.marginUsd;
       const dirMul = p.side === 'LONG' ? 1 : -1;
       upnl += (mark - p.entryPrice) * p.sizeToken * dirMul;
     }
-    return { notional, margin, upnl };
-  }, [positions, prices]);
+    return { notional, margin, upnl, holdUsd };
+  }, [positions, prices, poolNavUsd]);
 
   if (poolNavUsd <= 0) {
     return null;
@@ -247,8 +266,9 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
       <div className="text-[11px] text-label-tertiary mb-3 leading-relaxed">
         What the pool AI would open with the current ${fmtUsd(poolNavUsd)} NAV.
         {' '}{Math.round(ASSET_ALLOCATION * 100)}% per asset, {LEVERAGE}× leverage,
-        {' '}sides derived from live prediction fusion. P&amp;L = 24h price move
-        {' '}at {LEVERAGE}× on the signal-picked side.
+        {' '}sides derived from live prediction fusion. Signals below
+        {' '}{MIN_CONVICTION_PCT}% conviction hold in USDC — the AI won&apos;t bet
+        {' '}without a view. P&amp;L = 24h price move at {LEVERAGE}×.
       </div>
 
       {positions.length === 0 ? (
@@ -324,34 +344,34 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
               const priceRow = prices[p.symbol];
               const mark = priceRow?.price ?? p.entryPrice;
               const change24h = priceRow?.change24h;
-              const dirMul = p.side === 'LONG' ? 1 : -1;
+              const isHold = p.side === 'HOLD';
+              const dirMul = p.side === 'LONG' ? 1 : p.side === 'SHORT' ? -1 : 0;
               const pnl = (mark - p.entryPrice) * p.sizeToken * dirMul;
               const pnlPct = p.marginUsd > 0 ? (pnl / p.marginUsd) * 100 : 0;
               const winning = pnl >= 0;
+              const sideBg = p.side === 'LONG' ? '#34C75915' : p.side === 'SHORT' ? '#FF3B3015' : '#8E8E9315';
+              const sideColor = p.side === 'LONG' ? '#34C759' : p.side === 'SHORT' ? '#FF3B30' : '#8E8E93';
               return (
                 <div key={p.symbol} className="flex items-center gap-2 p-2 rounded-lg bg-system-bg-secondary text-[12px]">
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    {p.side === 'LONG' ? (
-                      <TrendingUp className="w-3.5 h-3.5 text-[#34C759] flex-shrink-0" />
-                    ) : (
-                      <TrendingDown className="w-3.5 h-3.5 text-[#FF3B30] flex-shrink-0" />
-                    )}
+                    {p.side === 'LONG' && <TrendingUp className="w-3.5 h-3.5 text-[#34C759] flex-shrink-0" />}
+                    {p.side === 'SHORT' && <TrendingDown className="w-3.5 h-3.5 text-[#FF3B30] flex-shrink-0" />}
+                    {isHold && <Activity className="w-3.5 h-3.5 text-[#8E8E93] flex-shrink-0" />}
                     <span className="font-semibold text-label-primary w-10">{p.symbol}</span>
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
-                      style={{
-                        background: p.side === 'LONG' ? '#34C75915' : '#FF3B3015',
-                        color: p.side === 'LONG' ? '#34C759' : '#FF3B30',
-                      }}
+                      style={{ background: sideBg, color: sideColor }}
                     >
                       {p.side}
                     </span>
-                    <span className="text-[10px] text-label-tertiary">{p.leverage}×</span>
+                    {!isHold && (
+                      <span className="text-[10px] text-label-tertiary">{p.leverage}×</span>
+                    )}
                     {p.signalConfidence > 0 && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
                         style={{ background: `${ACCENT}15`, color: ACCENT }}
-                        title={`Signal: ${p.signalDirection} · confidence ${p.signalConfidence}%`}
+                        title={`Signal: ${p.signalDirection} · confidence ${p.signalConfidence}% · min conviction ${MIN_CONVICTION_PCT}%`}
                       >
                         {p.signalDirection} {p.signalConfidence}%
                       </span>
@@ -367,15 +387,28 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
                     )}
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div
-                      className="font-semibold tabular-nums text-[12px]"
-                      style={{ color: winning ? '#34C759' : '#FF3B30' }}
-                    >
-                      {winning ? '+' : ''}${fmtUsd(pnl)}
-                    </div>
-                    <div className="text-[10px] tabular-nums" style={{ color: winning ? '#34C759' : '#FF3B30' }}>
-                      {winning ? '+' : ''}{pnlPct.toFixed(2)}%
-                    </div>
+                    {isHold ? (
+                      <>
+                        <div className="text-[11px] text-label-tertiary" title="Signal below min conviction — capital sits in USDC">
+                          in USDC
+                        </div>
+                        <div className="text-[10px] text-label-tertiary tabular-nums">
+                          ${fmtUsd(poolNavUsd * ASSET_ALLOCATION)}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          className="font-semibold tabular-nums text-[12px]"
+                          style={{ color: winning ? '#34C759' : '#FF3B30' }}
+                        >
+                          {winning ? '+' : ''}${fmtUsd(pnl)}
+                        </div>
+                        <div className="text-[10px] tabular-nums" style={{ color: winning ? '#34C759' : '#FF3B30' }}>
+                          {winning ? '+' : ''}{pnlPct.toFixed(2)}%
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );
