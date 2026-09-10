@@ -217,7 +217,10 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
 
   return (
     <section className="bg-white border border-black/5 rounded-2xl p-3 sm:p-5 min-w-0">
-      <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-x-3 gap-y-1 mb-3 sm:mb-4 min-w-0">
+      {/* Title row + metric row ALWAYS stacked — clean at every width, no
+          clip risk (previous inline-on-sm+ layout got squeezed by parent
+          card padding at ~768 and clipped the value). */}
+      <div className="flex flex-col gap-y-1 mb-3 sm:mb-4 min-w-0">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <TrendingUp className="w-4 h-4 text-label-primary flex-shrink-0" />
           <h2 className="text-base sm:text-[17px] font-semibold text-label-primary">Share price history</h2>
@@ -231,8 +234,6 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
             </span>
           )}
         </div>
-        {/* Metric row — wraps under the title on mobile, sits inline on sm+.
-            No shrink/hidden tricks — full labels always visible. */}
         <div className="flex items-baseline gap-x-3 text-[11px] sm:text-[12px] whitespace-nowrap">
           {data?.peak && (
             <span className="text-label-tertiary">
