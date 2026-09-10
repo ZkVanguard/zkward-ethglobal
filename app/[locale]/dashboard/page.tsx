@@ -702,7 +702,7 @@ export default function DashboardPage() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100vh-52px)] pt-12 lg:pt-0 pb-[calc(52px+env(safe-area-inset-bottom))] lg:pb-0">
+        <main className="flex-1 min-w-0 min-h-[calc(100vh-52px)] pt-12 lg:pt-0 pb-[calc(52px+env(safe-area-inset-bottom))] lg:pb-0">
           <div className="max-w-[1280px] mx-auto px-3 sm:px-5 py-3 sm:py-6 lg:px-8 lg:py-10">
             {/* Page Header — desktop-only large title. Uses the design
                 token `text-large-title` (34px, per-Apple line-height +

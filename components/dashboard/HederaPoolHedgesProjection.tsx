@@ -415,9 +415,9 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
             })}
           </div>
 
-          <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 flex items-start gap-1.5 text-[10px] text-label-tertiary leading-relaxed">
+          <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 flex items-start gap-1.5 text-[10px] text-label-tertiary leading-relaxed min-w-0">
             <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
-            <span>
+            <span className="min-w-0 break-words">
               No on-chain perp DEX on Hedera testnet yet — sizes + P&amp;L are
               projected against live marks. Entry snapshot is anchored to HCS
               so the numbers can't be back-fit after price moves.
@@ -431,9 +431,9 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
 
 function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="rounded-lg bg-system-bg-secondary p-2">
-      <div className="text-[10px] text-label-tertiary uppercase tracking-wide">{label}</div>
-      <div className="text-[13px] font-semibold tabular-nums" style={{ color: color ?? 'inherit' }}>
+    <div className="rounded-lg bg-system-bg-secondary p-2 min-w-0">
+      <div className="text-[10px] text-label-tertiary uppercase tracking-wide truncate">{label}</div>
+      <div className="text-[13px] font-semibold tabular-nums break-all" style={{ color: color ?? 'inherit' }}>
         {value}
       </div>
     </div>

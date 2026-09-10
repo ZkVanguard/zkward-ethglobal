@@ -415,7 +415,10 @@ function BackendCard({ label, endpoint, endpointHref, badge, badgeColor, winTag,
   const errorMsg = data?.errors?.[0]?.message;
 
   return (
-    <div className="p-3 sm:p-4">
+    // min-w-0 lets this grid item shrink below its intrinsic content width
+    // — without it, long addresses / tx rows push the whole dashboard
+    // wider than the mobile viewport (492px vs 375px).
+    <div className="p-3 sm:p-4 min-w-0">
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <span
           className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
@@ -573,13 +576,13 @@ function BackendCard({ label, endpoint, endpointHref, badge, badgeColor, winTag,
               </div>
               <div className="space-y-1">
                 {txs.slice(0, 3).map((t, i) => (
-                  <div key={i} className="flex items-center justify-between text-[10.5px] bg-system-bg-secondary rounded px-2 py-1">
-                    <span className={t.type === 'DEPOSIT' ? 'text-[#34C759] font-semibold' : 'text-[#FF9500] font-semibold'}>
+                  <div key={i} className="flex items-center justify-between gap-2 text-[10.5px] bg-system-bg-secondary rounded px-2 py-1 min-w-0">
+                    <span className={`${t.type === 'DEPOSIT' ? 'text-[#34C759]' : 'text-[#FF9500]'} font-semibold flex-shrink-0`}>
                       {t.type}
                     </span>
-                    <span className="font-mono text-label-tertiary">{truncAddr(t.actor)}</span>
-                    <span className="tabular-nums">${fmtUsdc(t.amount)}</span>
-                    <span className="text-label-tertiary">{timeAgo(t.timestamp)}</span>
+                    <span className="font-mono text-label-tertiary truncate min-w-0">{truncAddr(t.actor)}</span>
+                    <span className="tabular-nums flex-shrink-0">${fmtUsdc(t.amount)}</span>
+                    <span className="text-label-tertiary flex-shrink-0">{timeAgo(t.timestamp)}</span>
                   </div>
                 ))}
               </div>
