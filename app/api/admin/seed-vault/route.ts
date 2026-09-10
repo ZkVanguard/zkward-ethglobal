@@ -1,27 +1,62 @@
 /**
- * Admin: seed the Hedera SimpleUsdcVaultV2 with test USDC to scale demo NAV.
+ * Admin: seed a SimpleUsdcVault(V2) with test USDC to scale demo NAV.
  *
- * Mints `amount` USDC from MockERC20Permit to the operator wallet, approves
- * the vault, and deposits. Uses HEDERA_OPERATOR_KEY (already in Vercel env).
+ * Works against Hedera OR Sepolia (same MockERC20 pattern, different chain).
+ * Mints `amount` USDC to the operator, approves the vault, deposits.
  * CRON_SECRET-gated — not public.
  *
- * POST body: { amount?: number }   // human units, default 10000
- * Response : { txMint, txApprove, txDeposit, totalAssetsUsdc, hashScanUrl }
+ * POST body: { chain: 'hedera' | 'sepolia', amount?: number }
+ * Response : { txMint, txApprove, txDeposit, totalAssetsUsdc, explorerUrl }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { cronSecretMatches } from '@/lib/security/cron-auth';
-import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
+import { HEDERA_CONTRACT_ADDRESSES, SEPOLIA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const USDC = HEDERA_CONTRACT_ADDRESSES.testnet.usdtToken;
-const VAULT = HEDERA_CONTRACT_ADDRESSES.testnet.communityPool;
 const DECIMALS = 6;
-const RPC = 'https://testnet.hashio.io/api';
+
+interface ChainConfig {
+  usdc: string;
+  vault: string;
+  rpc: string;
+  keyEnvVar: 'HEDERA_OPERATOR_KEY' | 'PRIVATE_KEY';
+  explorerTxUrl: (hash: string) => string;
+  gasFee: () => Promise<Record<string, unknown>>;
+}
+
+async function getChain(chain: 'hedera' | 'sepolia'): Promise<ChainConfig> {
+  const { ethers } = await import('ethers');
+  if (chain === 'hedera') {
+    return {
+      usdc: HEDERA_CONTRACT_ADDRESSES.testnet.usdtToken,
+      vault: HEDERA_CONTRACT_ADDRESSES.testnet.communityPool,
+      rpc: 'https://testnet.hashio.io/api',
+      keyEnvVar: 'HEDERA_OPERATOR_KEY',
+      explorerTxUrl: (h) => `https://hashscan.io/testnet/transaction/${h}`,
+      // Hashio min gas price is ~1110 gwei; use 1500 for headroom.
+      gasFee: async () => ({
+        gasLimit: 800_000,
+        maxFeePerGas: ethers.parseUnits('1500', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('1', 'gwei'),
+        type: 2 as const,
+      }),
+    };
+  }
+  return {
+    usdc: SEPOLIA_CONTRACT_ADDRESSES.testnet.usdtToken,
+    vault: SEPOLIA_CONTRACT_ADDRESSES.testnet.communityPool,
+    rpc: (process.env.SEPOLIA_RPC || 'https://sepolia.drpc.org').trim(),
+    keyEnvVar: 'PRIVATE_KEY',
+    explorerTxUrl: (h) => `https://sepolia.etherscan.io/tx/${h}`,
+    // Sepolia — let ethers autoscale gas; just cap the limit.
+    gasFee: async () => ({ gasLimit: 500_000 }),
+  };
+}
 
 const ABI_USDC = [
   'function mint(address to, uint256 amount) external',
@@ -38,52 +73,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  let body: { amount?: number } = {};
-  try { body = (await request.json()) as { amount?: number }; } catch { /* default */ }
+  let body: { chain?: 'hedera' | 'sepolia'; amount?: number } = {};
+  try { body = (await request.json()) as typeof body; } catch { /* default */ }
+  const chain = body.chain ?? 'hedera';
+  if (chain !== 'hedera' && chain !== 'sepolia') {
+    return NextResponse.json({ error: `unsupported chain: ${chain}` }, { status: 400 });
+  }
   const human = Math.max(1, Math.min(1_000_000, Number(body.amount ?? 10_000)));
 
-  const key = (process.env.HEDERA_OPERATOR_KEY || '').trim();
-  if (!key) return NextResponse.json({ error: 'HEDERA_OPERATOR_KEY missing' }, { status: 503 });
+  const cfg = await getChain(chain);
+  const key = (process.env[cfg.keyEnvVar] || '').trim();
+  if (!key) return NextResponse.json({ error: `${cfg.keyEnvVar} missing` }, { status: 503 });
 
   try {
     const { ethers } = await import('ethers');
-    const provider = new ethers.JsonRpcProvider(RPC);
+    const provider = new ethers.JsonRpcProvider(cfg.rpc);
     const wallet = new ethers.Wallet(key.startsWith('0x') ? key : '0x' + key, provider);
 
-    const usdc = new ethers.Contract(USDC, ABI_USDC, wallet);
-    const vault = new ethers.Contract(VAULT, ABI_VAULT, wallet);
+    const usdc = new ethers.Contract(cfg.usdc, ABI_USDC, wallet);
+    const vault = new ethers.Contract(cfg.vault, ABI_VAULT, wallet);
     const amount = ethers.parseUnits(String(human), DECIMALS);
-
-    const fee = {
-      gasLimit: 800_000,
-      maxFeePerGas: ethers.parseUnits('1500', 'gwei'),
-      maxPriorityFeePerGas: ethers.parseUnits('1', 'gwei'),
-      type: 2 as const,
-    };
+    const fee = await cfg.gasFee();
 
     const t1 = await usdc.mint(wallet.address, amount, fee);
     await t1.wait();
-    const t2 = await usdc.approve(VAULT, amount, fee);
+    const t2 = await usdc.approve(cfg.vault, amount, fee);
     await t2.wait();
     const t3 = await vault.deposit(amount, fee);
     await t3.wait();
 
     const totalAssets = await vault.totalAssets();
-    logger.info('[admin/seed-hedera-vault] deposited', { human, txDeposit: t3.hash });
+    logger.info('[admin/seed-vault] deposited', { chain, human, txDeposit: t3.hash });
 
     return NextResponse.json({
       ok: true,
+      chain,
       amount: human,
       operator: wallet.address,
       txMint: t1.hash,
       txApprove: t2.hash,
       txDeposit: t3.hash,
       totalAssetsUsdc: Number(ethers.formatUnits(totalAssets, DECIMALS)),
-      hashScanUrl: `https://hashscan.io/testnet/transaction/${t3.hash}`,
+      explorerUrl: cfg.explorerTxUrl(t3.hash),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logger.warn('[admin/seed-hedera-vault] failed', { error: msg });
+    logger.warn('[admin/seed-vault] failed', { chain, error: msg });
     return NextResponse.json({ error: msg.slice(0, 400) }, { status: 500 });
   }
 }
