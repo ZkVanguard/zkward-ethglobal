@@ -74,7 +74,11 @@ function VaultTiltScene({ children }: { children: React.ReactNode }) {
 // landing gives visitors a scale anchor without leading with the current
 // (small) NAV. If the on-chain cap changes, bump this constant — the display
 // is intentionally not fetched (it's a marketing rail, not a live gate).
-const TVL_CAP_USD = 10_000;
+// Hedera testnet vault has no on-chain TVL cap (uncapped demo vault).
+// The bar just shows how full the demo is vs a soft target we've picked
+// for the visual — 100k is a reasonable "next milestone" that leaves room
+// to grow from the current 60k without pinning at 100%.
+const TVL_CAP_USD = 100_000;
 
 // ─── HederaVaultCallout ──────────────────────────────────────────────────
 // Small live-stats + sparkline widget for the Hedera testnet vault, shown
