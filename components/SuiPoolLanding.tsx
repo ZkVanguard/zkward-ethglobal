@@ -240,44 +240,29 @@ function formatCount(n: number, singular: string, plural: string): string {
 }
 
 async function fetchPoolSummary(): Promise<PoolSummary | null> {
-  // Fire both in parallel — the volatility fetch's URL doesn't depend on
-  // the main fetch's data, only its result gates the final honestAth
-  // decision below. Sequential await would double the load-time round-trip.
-  const [mainRes, volRes] = await Promise.all([
-    fetch('/api/sui/community-pool?network=mainnet'),
-    fetch('/api/sui/community-pool?action=volatility&network=mainnet').catch(() => null),
-  ]);
-  const j = await mainRes.json();
-  if (!j?.success || !j?.data) return null;
-  const d = j.data;
-  // Overlay DB-verified ATH on top of the on-chain phantom.
-  // See useCommunityPool.ts for the full rationale: Move's ATH is a
-  // monotonic ratchet, so a single pre-stabilizer jitter spike locked
-  // in a peak that never actually persisted. The volatility endpoint
-  // returns the honest ATH computed from non-clamped DB snapshots. If
-  // it's higher-than-zero AND lower-than-on-chain (i.e. on-chain is
-  // inflated), use it. Otherwise trust the on-chain value.
-  const onChainAth = Number(d.allTimeHighNav ?? 1);
-  let honestAth = onChainAth;
-  try {
-    if (volRes) {
-      const vj = await volRes.json();
-      const verifiedAth = Number(vj?.data?.verifiedAth?.sharePrice ?? 0);
-      if (verifiedAth > 0 && verifiedAth < onChainAth) honestAth = verifiedAth;
-    }
-  } catch {
-    /* non-critical — fall back to on-chain value */
-  }
+  // Homepage highlights the HEDERA vault (ETHGlobal prize surface). SUI
+  // mainnet pool is $60 and boring; Hedera vault is $60k+ post-seed and
+  // is what judges evaluate. Same PoolSummary contract, different backend.
+  const res = await fetch('/api/community-pool?chain=hedera&network=testnet', {
+    cache: 'no-store',
+  });
+  const j = await res.json();
+  const p = j?.pool;
+  if (!p) return null;
   return {
-    totalNAV: Number(d.totalNAV ?? 0),
-    sharePrice: Number(d.sharePrice ?? 1),
-    allTimeHighNav: honestAth,
-    totalDeposited: Number(d.totalDeposited ?? 0),
-    totalWithdrawn: Number(d.totalWithdrawn ?? 0),
-    memberCount: Number(d.memberCount ?? 0),
-    totalShares: Number(d.totalShares ?? 0),
-    allocation: d.allocation ?? {},
-    paused: !!d.paused,
+    totalNAV: Number(p.totalValueUSD ?? 0),
+    sharePrice: Number(p.sharePrice ?? 1),
+    // Simple vault has no ATH concept (share price is pinned to $1.00 by
+    // design). Use current NAV as ATH — no phantom peak to worry about.
+    allTimeHighNav: Number(p.sharePrice ?? 1),
+    totalDeposited: Number(p.totalDeposited ?? p.totalValueUSD ?? 0),
+    totalWithdrawn: Number(p.totalWithdrawn ?? 0),
+    memberCount: Number(p.memberCount ?? 0),
+    totalShares: Number(p.totalShares ?? 0),
+    // Hedera vault holds USDC only — no cross-asset allocation until
+    // AI-executed swaps land on-chain (currently projected in dashboard).
+    allocation: p.allocation ?? { USDC: 100 },
+    paused: !!p.paused,
   };
 }
 
@@ -632,7 +617,7 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
                     <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: '#00A79F' }} />
                   </span>
                   <span className="text-footnote font-medium text-label-secondary">
-                    Multichain · <span style={{ color: '#00A79F' }} className="font-semibold">Hedera Testnet</span> · SUI Mainnet
+                    <span style={{ color: '#00A79F' }} className="font-semibold">Hedera Testnet</span> · Multichain (SUI Mainnet also)
                   </span>
                 </span>
               }
@@ -659,8 +644,8 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
 
           {/* Subtitle — 15 words, one line's worth on desktop */}
           <p className="text-center text-base sm:text-[19px] text-label-secondary max-w-[580px] mx-auto leading-relaxed mb-10 sm:mb-14 px-1">
-            Multichain AI vault. Live on Hedera Testnet (EVM · x402 · HCS audit)
-            and SUI Mainnet. Auto-hedged perps, ZK-STARK verified.
+            AI-managed vault on Hedera Testnet. EVM contracts · x402 agent
+            payments · HCS audit trail · The Graph indexed. Also live on SUI Mainnet.
           </p>
 
           {/* ─── VAULT METER (signature element) ─── */}
@@ -895,8 +880,8 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
             <TrustBadge
               icon={<Layers className="w-5 h-5" />}
               title="Multichain"
-              value="SUI + Hedera"
-              hint="Pool on SUI Mainnet, agent settlement on Hedera EVM"
+              value="Hedera + SUI"
+              hint="Pool on Hedera Testnet (EVM), also live on SUI Mainnet"
             />
           </div>
         </Reveal>
@@ -1034,12 +1019,12 @@ export const SuiPoolLanding = memo(function SuiPoolLanding() {
             Join in seconds.
           </h2>
           <p className="text-sm sm:text-callout md:text-[20px] text-label-secondary mb-6 sm:mb-8 leading-relaxed sm:leading-[1.5] px-1">
-            Connect a SUI wallet, deposit any amount of USDC, and let the
+            Connect a wallet, deposit any amount of USDC, and let the
             AI work.{' '}
             {pool ? (
-              <>Currently {formatCount(pool.memberCount, 'member', 'members')} · live on SUI Mainnet.</>
+              <>Currently {formatCount(pool.memberCount, 'member', 'members')} · live on Hedera Testnet.</>
             ) : (
-              <>Live on SUI Mainnet.</>
+              <>Live on Hedera Testnet.</>
             )}
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
