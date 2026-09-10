@@ -35,13 +35,16 @@ const AGENT_REGISTRY_EXPLORER = `https://hashscan.io/testnet/topic/${AGENT_REGIS
 interface PaymentIntent {
   scheme: string;
   network: string;
+  // x402 v1 field name (also used in body). v2 header uses `amount` — same value.
   maxAmountRequired: string;
-  currency: string;
+  currency?: string;
   payTo: string;
-  facilitator: string;
+  facilitator?: string;
   resource: string;
   description: string;
-  metadata: { chain: string; endpoint: string; priceModel: string; signalWindow: string };
+  metadata?: { chain?: string; endpoint?: string; priceModel?: string; signalWindow?: string };
+  asset?: string;
+  extra?: Record<string, unknown>;
 }
 
 interface SignalResponse {
@@ -69,8 +72,21 @@ async function fetchIntentOnly(asset: string): Promise<PaymentIntent | null> {
       cache: 'no-store',
     });
     if (r.status !== 402) return null;
-    const body = (await r.json()) as { intent?: PaymentIntent };
-    return body.intent ?? null;
+    // Response shape supports THREE clients:
+    //   - x402 v1 in body: { accepts: [PaymentRequirementsV1], facilitator }
+    //   - Legacy: { intent: PaymentIntent } (kept for backwards compat)
+    //   - v2 also emits a PAYMENT-REQUIRED header, but body is authoritative
+    //     for this dashboard demo.
+    const body = (await r.json()) as {
+      accepts?: PaymentIntent[];
+      intent?: PaymentIntent;
+      facilitator?: string;
+    };
+    const req = body.accepts?.[0] ?? body.intent;
+    if (!req) return null;
+    // Attach top-level facilitator if the requirement doesn't already carry it.
+    if (body.facilitator && !req.facilitator) req.facilitator = body.facilitator;
+    return req;
   } catch {
     return null;
   }
