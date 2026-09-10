@@ -157,36 +157,36 @@ export const HedgeDetailModal = memo(function HedgeDetailModal({
                       <span className="text-[12px] font-semibold text-[#1d1d1f]">{chainId === CHAIN_IDS_CRONOS_MAINNET ? 'Cronos Mainnet (25)' : 'Cronos Testnet (338)'}</span>
                     </div>
                     {hedge.hedgeId && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-[#86868b]">Hedge ID</span>
-                        <span className="text-[11px] font-mono text-[#1d1d1f]">{hedge.hedgeId.slice(0, 10)}...{hedge.hedgeId.slice(-8)}</span>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <span className="text-[11px] text-[#86868b] flex-shrink-0">Hedge ID</span>
+                        <span className="text-[11px] font-mono text-[#1d1d1f] truncate min-w-0">{hedge.hedgeId.slice(0, 10)}...{hedge.hedgeId.slice(-8)}</span>
                       </div>
                     )}
                     {hedge.contractAddress && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-[#86868b]">Contract</span>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <span className="text-[11px] text-[#86868b] flex-shrink-0">Contract</span>
                         <a
                           href={`${explorerUrl}/address/${hedge.contractAddress}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[#007AFF] hover:underline text-[11px]"
+                          className="flex items-center gap-1 text-[#007AFF] hover:underline text-[11px] min-w-0"
                         >
-                          <span className="font-mono">{hedge.contractAddress.slice(0, 8)}...{hedge.contractAddress.slice(-6)}</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
+                          <span className="font-mono truncate min-w-0">{hedge.contractAddress.slice(0, 8)}...{hedge.contractAddress.slice(-6)}</span>
+                          <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
                         </a>
                       </div>
                     )}
                     {hedge.txHash && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-[#86868b]">Transaction</span>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <span className="text-[11px] text-[#86868b] flex-shrink-0">Transaction</span>
                         <a
                           href={`${explorerUrl}/tx/${hedge.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[#007AFF] hover:underline text-[11px]"
+                          className="flex items-center gap-1 text-[#007AFF] hover:underline text-[11px] min-w-0"
                         >
-                          <span className="font-mono">{hedge.txHash.slice(0, 10)}...{hedge.txHash.slice(-8)}</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
+                          <span className="font-mono truncate min-w-0">{hedge.txHash.slice(0, 10)}...{hedge.txHash.slice(-8)}</span>
+                          <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
                         </a>
                       </div>
                     )}

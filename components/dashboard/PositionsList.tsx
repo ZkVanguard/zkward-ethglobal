@@ -599,7 +599,7 @@ export function PositionsList({ address, onOpenHedge }: PositionsListProps) {
                 <span className="text-[9px] font-bold text-[#34C759]">LIVE</span>
               </span>
             </div>
-            <div className="text-[28px] sm:text-[36px] font-bold text-[#1d1d1f] leading-none tracking-[-0.02em]">
+            <div className="text-[22px] xs:text-[28px] sm:text-[36px] font-bold text-[#1d1d1f] leading-none tracking-[-0.02em] tabular-nums break-all">
               $
               {displayValues.totalValue.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
