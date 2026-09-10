@@ -1,8 +1,50 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { PoolSummary, ChainKey } from './types';
 import { formatUSD } from './utils';
+
+// Assets the Hedera projection covers (BTC + ETH + SUI). Same set as
+// HederaPoolHedgesProjection. Equal weight per leg.
+const PROJECTION_ASSETS = ['BTC', 'ETH', 'SUI'] as const;
+const PROJECTION_LEVERAGE = 2;
+
+interface PredictionRow { direction?: 'UP' | 'DOWN' | 'NEUTRAL'; confidence?: number }
+interface PriceRow { symbol: string; price: number; change24h?: number }
+
+// 24h projected return of a hypothetical AI-run vault: equal-weight across
+// BTC/ETH/SUI, long when direction=UP, short when direction=DOWN, out
+// (contribute 0) when NEUTRAL/missing. Return is at 2× leverage on the
+// current 24h move. Honest hypothetical — labelled clearly in the UI as
+// "if AI executed".
+async function fetchProjectedReturn(): Promise<{ returnPct: number; anyActive: boolean } | null> {
+  try {
+    const [predRes, priceRes] = await Promise.all([
+      fetch(`/api/predictions/per-asset?assets=${PROJECTION_ASSETS.join(',')}`),
+      fetch(`/api/prices?symbols=${PROJECTION_ASSETS.join(',')}`),
+    ]);
+    const pred = (await predRes.json()) as { predictions?: Record<string, PredictionRow> };
+    const priceJ = (await priceRes.json()) as { data?: PriceRow[] };
+    const priceMap = new Map((priceJ.data ?? []).map((p) => [p.symbol, p.change24h]));
+    let sum = 0;
+    let active = 0;
+    for (const asset of PROJECTION_ASSETS) {
+      const dir = pred.predictions?.[asset]?.direction;
+      const ch = priceMap.get(asset);
+      if (typeof ch !== 'number' || !dir || dir === 'NEUTRAL') continue;
+      const side = dir === 'DOWN' ? -1 : 1;
+      sum += ch * side * PROJECTION_LEVERAGE;
+      active++;
+    }
+    // Equal-weight across the full 3-leg basket even if some legs sit out —
+    // matches how the vault would allocate (unused legs stay in USDC = 0
+    // contribution).
+    return { returnPct: (sum / PROJECTION_ASSETS.length) * 100, anyActive: active > 0 };
+  } catch {
+    return null;
+  }
+}
 
 interface PoolStatsProps {
   poolData: PoolSummary;
@@ -58,7 +100,21 @@ function Metric({ value, label, size, valueColorClass, chip }: MetricProps) {
 
 export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: PoolStatsProps) {
   const isSui = selectedChain === 'sui';
+  const isHedera = selectedChain === 'hedera';
   const isStale = Boolean(poolData.stale) && isSui;
+
+  // Projected 24h return @ 2× — Hedera only, since Hedera share price is
+  // pinned to \$1.00 by design (ERC-4626-lite math). Answers the user
+  // question "what would this look like if the AI actually executed?".
+  const projected = useQuery({
+    queryKey: ['projected-return', 'hedera'],
+    queryFn: fetchProjectedReturn,
+    enabled: isHedera,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const projectedPct = projected.data?.returnPct ?? null;
+  const projectedShare = projectedPct != null ? 1 + projectedPct / 100 : null;
   const staleAgeLabel = poolData.staleAgeSeconds != null
     ? formatStaleAge(poolData.staleAgeSeconds)
     : undefined;
@@ -141,7 +197,9 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
   // the Share Price tile so users still see "snapshot · Xh old" context.
   return (
     <div className="p-3 sm:p-4 md:p-5 border-b border-gray-100 dark:border-gray-700 min-w-0">
-      {/* Mobile compact strip — hero row removed; chart above owns the hero slot. */}
+      {/* Mobile compact strip — hero row removed; chart above owns the hero slot.
+          Hedera shows projected metrics instead of the flat \$1.00 (which is
+          pinned by design and would just repeat the same number). */}
       <div className="grid grid-cols-3 gap-2 sm:hidden">
         {isSui && profit && profit.profitUsd !== null ? (
           <Metric
@@ -149,6 +207,13 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
             value={signedUsd(profit.profitUsd)}
             label="Profit"
             valueColorClass={pnlColor(profit.profitUsd)}
+          />
+        ) : isHedera && projectedShare != null ? (
+          <Metric
+            size="mobile-strip"
+            value={`$${projectedShare.toFixed(4)}`}
+            label="Proj. Share"
+            valueColorClass={pnlColor(projectedPct ?? 0)}
           />
         ) : (
           <Metric size="mobile-strip" value={sharePriceDisplay} label="Share Price" chip={staleChip} />
@@ -162,6 +227,14 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
             chip={athChip}
           />
         )}
+        {isHedera && projectedPct != null && (
+          <Metric
+            size="mobile-strip"
+            value={signedPct(projectedPct)}
+            label="Proj. 24h @ 2×"
+            valueColorClass={pnlColor(projectedPct)}
+          />
+        )}
         <Metric
           size="mobile-strip"
           value={Number(poolData.memberCount).toLocaleString()}
@@ -169,8 +242,10 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
         />
       </div>
 
-      {/* Desktop grid — Total Value + Total Shares removed (chart owns them). */}
-      <div className={`hidden sm:grid gap-3 sm:gap-4 ${isSui ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2'}`}>
+      {/* Desktop grid — Total Value + Total Shares removed (chart owns them).
+          Hedera gets 4 tiles: Members · Share Price (actual) · Projected @ 2× ·
+          Projected Share Price. SUI gets Return · Profit · Members · Share Price. */}
+      <div className={`hidden sm:grid gap-3 sm:gap-4 ${(isSui || isHedera) ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2'}`}>
         {isSui && profit && (
           <Metric
             size="desktop"
@@ -194,6 +269,22 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
           label={poolData.memberCount === 1 ? 'Pool Member' : 'Pool Members'}
         />
         <Metric size="desktop" value={sharePriceDisplay} label={sharePriceSubtext} chip={staleChip} />
+        {isHedera && projectedPct != null && (
+          <Metric
+            size="desktop"
+            value={signedPct(projectedPct)}
+            label="Projected 24h @ 2× (if AI executed)"
+            valueColorClass={pnlColor(projectedPct)}
+          />
+        )}
+        {isHedera && projectedShare != null && (
+          <Metric
+            size="desktop"
+            value={`$${projectedShare.toFixed(4)}`}
+            label="Projected Share Price (hypothetical)"
+            valueColorClass={pnlColor(projectedPct ?? 0)}
+          />
+        )}
       </div>
     </div>
   );
