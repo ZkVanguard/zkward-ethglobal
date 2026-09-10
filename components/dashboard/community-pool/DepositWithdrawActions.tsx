@@ -116,8 +116,8 @@ export const DepositWithdrawActions = memo(function DepositWithdrawActions({
   if (!isSui && tokenNotDeployed) {
     const chainName = chainConfig?.name ?? selectedChain;
     return (
-      <div className="p-4 border-b border-gray-100 dark:border-gray-700">
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-[#00A79F]/10 border border-[#00A79F]/30">
+      <div className="p-4 border-b border-gray-100 dark:border-gray-700 min-w-0">
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-[#00A79F]/10 border border-[#00A79F]/30 min-w-0">
           <span className="text-2xl flex-shrink-0">🚧</span>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-label-primary mb-1">
@@ -319,7 +319,7 @@ export const DepositWithdrawActions = memo(function DepositWithdrawActions({
 
   // EVM chains
   return (
-    <div className="p-4 border-b border-gray-100 dark:border-gray-700">
+    <div className="p-4 border-b border-gray-100 dark:border-gray-700 min-w-0">
       {/* EVM connection prompt */}
       {!evmConnected ? (
         <div className="mb-4 space-y-3">

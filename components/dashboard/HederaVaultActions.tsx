@@ -587,8 +587,8 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
           null;
 
         return (
-          <div className="space-y-1.5">
-            <div className="flex gap-2">
+          <div className="space-y-1.5 min-w-0">
+            <div className="flex gap-2 min-w-0">
               <input
                 type="number"
                 inputMode="decimal"
@@ -596,14 +596,14 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
                 min="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder={mode === 'deposit' ? 'USDC amount' : `Shares (max ${humanShares.toFixed(4)})`}
+                placeholder={mode === 'deposit' ? 'USDC amount' : `Max ${humanShares.toFixed(2)}`}
                 disabled={busy}
-                className="flex-1 h-11 px-3 rounded-[10px] border border-black/10 dark:border-white/15 bg-system-bg-secondary tabular-nums focus:outline-none"
+                className="flex-1 min-w-0 h-11 px-3 rounded-[10px] border border-black/10 dark:border-white/15 bg-system-bg-secondary tabular-nums focus:outline-none"
               />
               {mode === 'withdraw' && humanShares > 0 && (
                 <button
                   onClick={() => setAmount(humanShares.toString())}
-                  className="px-3 h-11 rounded-[10px] bg-system-bg-secondary text-[12px] font-medium text-label-secondary hover:bg-[#E5E5EA] active:scale-[0.98]"
+                  className="flex-shrink-0 px-3 h-11 rounded-[10px] bg-system-bg-secondary text-[12px] font-medium text-label-secondary hover:bg-[#E5E5EA] active:scale-[0.98]"
                 >
                   Max
                 </button>
@@ -611,7 +611,7 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
               <button
                 onClick={mode === 'deposit' ? onDeposit : onWithdraw}
                 disabled={disabledReason !== null}
-                className="h-11 px-5 rounded-[10px] text-white font-semibold text-[14px] active:scale-[0.98] disabled:opacity-60 flex items-center gap-1.5 min-w-[120px] justify-center"
+                className="flex-shrink-0 h-11 px-4 sm:px-5 rounded-[10px] text-white font-semibold text-[13px] sm:text-[14px] active:scale-[0.98] disabled:opacity-60 flex items-center gap-1.5 min-w-[92px] sm:min-w-[120px] justify-center"
                 style={{ background: mode === 'deposit' ? ACCENT : '#FF3B30' }}
               >
                 {busy && <Loader2 className="w-4 h-4 animate-spin" />}
