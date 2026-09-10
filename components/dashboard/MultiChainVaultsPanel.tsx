@@ -21,6 +21,44 @@ import { useState } from 'react';
 // v0.2.0 is the populated subgraph — indexes both CommunityPool (0x07d6…1086)
 // and SimpleUsdcVault (0x68ee…111b). v0.1.1 was subgraph-only-schema (empty).
 const STUDIO_URL = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0';
+
+// GraphiQL landing URL with a pre-populated query that shows off the whole
+// schema in one click — judges see live data + derived relationships without
+// having to type anything. Empty ?query= drops them into an empty playground
+// (bad first impression); this shows _meta health + pools + derived txs.
+const STUDIO_PLAYGROUND_URL = `${STUDIO_URL}/graphql?query=${encodeURIComponent(
+`# ZkWard AI-Vault subgraph on Sepolia — Studio deployment 1758819/zkward/v0.2.0
+# Same schema is also served by @zkward/hedera-graphql-adapter (npm) for Hedera.
+{
+  _meta {
+    block { number timestamp }
+    hasIndexingErrors
+    deployment
+  }
+  pools {
+    id
+    network
+    totalNav
+    totalShares
+    memberCount
+    transactions(first: 5, orderBy: timestamp, orderDirection: desc) {
+      type
+      actor
+      amount
+      shares
+      timestamp
+      transactionHash
+    }
+  }
+  members {
+    address
+    currentShares
+    totalDeposited
+    totalWithdrawn
+  }
+}
+`
+)}`;
 const HEDERA_URL = '/api/subgraph/hedera';
 const SEPOLIA_POOL_ADDR = '0x07d68C2828F35327d12a7Ba796cCF3f12F8A1086';
 const SEPOLIA_POOL_ETHERSCAN = `https://sepolia.etherscan.io/address/${SEPOLIA_POOL_ADDR}#writeContract`;
@@ -239,6 +277,7 @@ export function MultiChainVaultsPanel() {
         <BackendCard
           label="The Graph Studio"
           endpoint={STUDIO_URL}
+          endpointHref={STUDIO_PLAYGROUND_URL}
           badge="Sepolia · The Graph"
           badgeColor="#00A79F"
           winTag="Standardized subgraph — one query, portable to any Graph-indexed chain"
