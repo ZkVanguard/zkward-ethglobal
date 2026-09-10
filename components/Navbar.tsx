@@ -90,7 +90,13 @@ export const Navbar = memo(function Navbar() {
       }`}
     >
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-[52px] min-w-0">
+        {/* overflow-x-clip contains the 8-16px scrollWidth caused by the
+            -ml-2 / -mr-2 negative margins on the Logo and hamburger button.
+            Those margins are intentional (they push the tap targets to the
+            visual edge of the nav bar without expanding the padded content
+            box), but they inflate scrollWidth and register as inner overflow
+            on responsive audits. Clip contains it without altering layout. */}
+        <div className="flex items-center justify-between h-[52px] min-w-0 overflow-x-clip">
           {/* Logo — brand mark + wordmark. Logo component already renders
               the "ZkWard" text from sm: (640px+); no extra span needed. */}
           <Link href="/" className="flex items-center gap-2 -ml-2">
