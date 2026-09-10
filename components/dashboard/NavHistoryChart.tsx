@@ -254,7 +254,21 @@ export function NavHistoryChart({ chain = 'sui' }: NavHistoryChartProps = {}) {
               </strong>
             </span>
           )}
-          {change !== null && (
+          {/* Hide % change in NAV mode — NAV grows with deposits AND yield, so
+              % is misleading (a big deposit shows +8000% but that's capital
+              inflow, not return). Show the first→last dollar delta instead. */}
+          {isNavMode && data?.first && data?.last ? (
+            <span className="text-label-tertiary">
+              First{' '}
+              <strong className="text-label-primary font-mono">
+                ${data.first.navUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </strong>
+              {' '}→ Now{' '}
+              <strong className="text-label-primary font-mono">
+                ${data.last.navUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </strong>
+            </span>
+          ) : change !== null && (
             <span className={change >= 0 ? 'text-green-700' : 'text-red-700'}>
               {change >= 0 ? '+' : ''}{change.toFixed(2)}% window
             </span>
