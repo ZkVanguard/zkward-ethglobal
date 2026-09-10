@@ -358,7 +358,7 @@ function SignalsStrip() {
           reconstructed from HCS via <span className="font-mono">signals()</span> GraphQL — every row anchored on-chain
         </span>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="flex flex-wrap gap-1.5 pb-1">
         {signals.map((s) => {
           const c = directionColor(s.direction);
           const hashscan = s.hcsSeq
@@ -366,7 +366,7 @@ function SignalsStrip() {
             : undefined;
           const inner = (
             <div
-              className="flex-shrink-0 flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px]"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] whitespace-nowrap"
               style={{ background: `${c}12`, border: `1px solid ${c}30` }}
             >
               <span className="font-mono font-semibold text-label-primary">{s.asset}</span>
