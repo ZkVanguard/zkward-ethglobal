@@ -28,7 +28,7 @@ import {
 import { Plus, Minus, Loader2, Check, ExternalLink, AlertTriangle, Wallet, Droplets, Copy } from 'lucide-react';
 import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
 import { hederaTestnet } from '@/lib/evm-wallet/wagmi-config';
-import { usePrivyEmbeddedAddress } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
+import { usePrivyEmbeddedAddress, usePrivyEmbeddedStatus } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
 import { usePrivySender } from '@/lib/evm-wallet/usePrivySender';
 
 const HEDERA_TESTNET_ID = 296;
@@ -132,6 +132,7 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
   // the prompt. Falls back to wagmi writeContract when the address is
   // MetaMask/injected or when Privy isn't enabled.
   const privyEmbeddedAddress = usePrivyEmbeddedAddress();
+  const privyStatus = usePrivyEmbeddedStatus();
   const privySender = usePrivySender();
   const isPrivySigner = !!privyEmbeddedAddress
     && !!privySender
@@ -482,6 +483,11 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
           <div className="text-[11px] text-label-tertiary mt-1.5 leading-relaxed">
             Send USDC to this address to fund deposits, or use the <span className="font-medium">Faucet</span> button below for 100 test USDC.
           </div>
+        </div>
+      ) : privyStatus.authenticated && (privyStatus.isCreating || !privyStatus.ready) ? (
+        <div className="rounded-xl border p-3 text-[12px] flex items-center gap-2" style={{ borderColor: `${HEDERA_ACCENT}30`, background: `${HEDERA_ACCENT}0d`, color: HEDERA_ACCENT }}>
+          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+          <span>Creating your Hedera-testnet embedded wallet… (~2-5s)</span>
         </div>
       ) : (
         <div className="rounded-xl border border-[#FF9500]/30 bg-[#FF9500]/10 p-3 text-[12px] text-[#B26400]">

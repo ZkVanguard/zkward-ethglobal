@@ -18,11 +18,28 @@
  */
 
 import { isPrivyEnabled } from './privy-config';
-import { usePrivyEmbeddedAddressReal } from './usePrivyEmbeddedAddress.impl';
+import { usePrivyEmbeddedAddressReal, usePrivyEmbeddedStatusReal } from './usePrivyEmbeddedAddress.impl';
 
 export function usePrivyEmbeddedAddress(): `0x${string}` | null {
   // Static: same branch on every render for this build.
   if (!isPrivyEnabled()) return null;
   // The impl module calls Privy hooks — safe here because Privy is on.
   return usePrivyEmbeddedAddressReal();
+}
+
+/**
+ * Status-aware variant — distinguishes "signed out", "creating wallet",
+ * and "have wallet". Use for UIs that need to show a spinner between
+ * Google-auth completion and wallet materialisation (~2-5s window).
+ */
+export function usePrivyEmbeddedStatus(): {
+  address: `0x${string}` | null;
+  isCreating: boolean;
+  authenticated: boolean;
+  ready: boolean;
+} {
+  if (!isPrivyEnabled()) {
+    return { address: null, isCreating: false, authenticated: false, ready: true };
+  }
+  return usePrivyEmbeddedStatusReal();
 }
