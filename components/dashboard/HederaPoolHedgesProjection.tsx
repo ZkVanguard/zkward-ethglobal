@@ -353,23 +353,26 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
               const sideColor = p.side === 'LONG' ? '#34C759' : p.side === 'SHORT' ? '#FF3B30' : '#8E8E93';
               return (
                 <div key={p.symbol} className="flex items-center gap-2 p-2 rounded-lg bg-system-bg-secondary text-[12px]">
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  {/* flex-wrap on mobile — long pill combinations were breaking
+                      mid-word (SHOR/T) at 375. Wrapping preserves the pill
+                      shape and just puts extra badges on line 2. */}
+                  <div className="flex items-center gap-x-1.5 gap-y-1 flex-1 min-w-0 flex-wrap">
                     {p.side === 'LONG' && <TrendingUp className="w-3.5 h-3.5 text-[#34C759] flex-shrink-0" />}
                     {p.side === 'SHORT' && <TrendingDown className="w-3.5 h-3.5 text-[#FF3B30] flex-shrink-0" />}
                     {isHold && <Activity className="w-3.5 h-3.5 text-[#8E8E93] flex-shrink-0" />}
-                    <span className="font-semibold text-label-primary w-10">{p.symbol}</span>
+                    <span className="font-semibold text-label-primary min-w-[2.5rem]">{p.symbol}</span>
                     <span
-                      className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                      className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap"
                       style={{ background: sideBg, color: sideColor }}
                     >
                       {p.side}
                     </span>
                     {!isHold && (
-                      <span className="text-[10px] text-label-tertiary">{p.leverage}×</span>
+                      <span className="text-[10px] text-label-tertiary whitespace-nowrap">{p.leverage}×</span>
                     )}
                     {p.signalConfidence > 0 && (
                       <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap"
                         style={{ background: `${ACCENT}15`, color: ACCENT }}
                         title={`Signal: ${p.signalDirection} · confidence ${p.signalConfidence}% · min conviction ${MIN_CONVICTION_PCT}%`}
                       >
@@ -378,7 +381,7 @@ export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
                     )}
                     {typeof change24h === 'number' && (
                       <span
-                        className="text-[10px] tabular-nums"
+                        className="text-[10px] tabular-nums whitespace-nowrap"
                         style={{ color: change24h >= 0 ? '#34C759' : '#FF3B30' }}
                         title="24h price change"
                       >
