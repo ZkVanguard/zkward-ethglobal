@@ -21,6 +21,7 @@ import { usePrivy, useLogout } from '@privy-io/react-auth';
 import { Copy, Check, ExternalLink, Pencil, LogOut, Mail, Chrome, Wallet as WalletIcon, User } from 'lucide-react';
 import { WalletAvatar } from '@/components/ui/WalletAvatar';
 import { usePrivyEmbeddedAddress, usePrivyEmbeddedStatus } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
+import { useWalletProfile, useSetWalletProfile } from '@/lib/hooks/useWalletProfile';
 import { ConnectPromptButton } from '@/components/ui/ConnectPromptButton';
 
 const HEDERA_ACCENT = '#00A79F';
@@ -69,26 +70,18 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
   const { user } = usePrivy() as { user: PrivyUserLike | null };
   const { logout } = useLogout();
 
-  const [name, setName] = useState<string | null>(null);
+  const { data: profile } = useWalletProfile(address);
+  const setProfileMut = useSetWalletProfile();
+  const name = profile?.displayName ?? null;
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
   const [nameErr, setNameErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const saving = setProfileMut.isPending;
 
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/profile?addresses=${address}`)
-      .then((r) => r.json())
-      .then((j: { profiles?: Record<string, { displayName: string | null }> }) => {
-        if (!alive) return;
-        const n = j.profiles?.[address.toLowerCase()]?.displayName ?? null;
-        setName(n);
-        setDraft(n ?? '');
-      })
-      .catch(() => { /* name is optional */ });
-    return () => { alive = false; };
-  }, [address]);
+  // Keep draft in sync when the cached name updates externally.
+  useEffect(() => { if (!editing) setDraft(name ?? ''); }, [name, editing]);
 
   const onSaveName = async () => {
     const trimmed = draft.trim();
@@ -96,22 +89,10 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
       setNameErr('1-32 characters');
       return;
     }
-    setSaving(true);
     setNameErr(null);
-    try {
-      const r = await fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address, displayName: trimmed }),
-      });
-      const j = (await r.json()) as { ok?: boolean; error?: string };
-      if (!j.ok) setNameErr(j.error || 'save failed');
-      else { setName(trimmed); setEditing(false); }
-    } catch (e) {
-      setNameErr(e instanceof Error ? e.message : 'save failed');
-    } finally {
-      setSaving(false);
-    }
+    const res = await setProfileMut.mutateAsync({ address, displayName: trimmed });
+    if (!res.ok) setNameErr(res.error ?? 'save failed');
+    else setEditing(false);
   };
 
   const onCopy = () => {

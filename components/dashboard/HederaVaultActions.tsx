@@ -31,6 +31,7 @@ import { hederaTestnet } from '@/lib/evm-wallet/wagmi-config';
 import { usePrivyEmbeddedAddress, usePrivyEmbeddedStatus } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
 import { usePrivySender } from '@/lib/evm-wallet/usePrivySender';
 import { WalletAvatar } from '@/components/ui/WalletAvatar';
+import { useWalletProfile, useSetWalletProfile } from '@/lib/hooks/useWalletProfile';
 
 const HEDERA_TESTNET_ID = 296;
 const USDC_DECIMALS = 6;
@@ -732,30 +733,21 @@ async function waitForTx(hash: `0x${string}`, maxWaitMs = 30_000): Promise<void>
 /**
  * NameAndAvatarRow — shows the user's avatar + current display name (or
  * "Set your name" prompt) inside the wallet card. Click Pencil to edit
- * inline; POST to /api/profile persists. Name shows up on the community
- * leaderboard for everyone else.
+ * inline. Uses the shared useWalletProfile hook so editing here OR in
+ * ProfileTab keeps every mounted surface in sync via React Query cache
+ * invalidation.
  */
 function NameAndAvatarRow({ address }: { address: `0x${string}` }) {
-  const [name, setName] = useState<string | null>(null);
+  const { data } = useWalletProfile(address);
+  const setProfile = useSetWalletProfile();
+  const name = data?.displayName ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const saving = setProfile.isPending;
 
-  // Load profile on mount + on address change.
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/profile?addresses=${address}`)
-      .then((r) => r.json())
-      .then((j: { profiles?: Record<string, { displayName: string | null }> }) => {
-        if (!alive) return;
-        const n = j.profiles?.[address.toLowerCase()]?.displayName ?? null;
-        setName(n);
-        setDraft(n ?? '');
-      })
-      .catch(() => { /* ignore — name is optional */ });
-    return () => { alive = false; };
-  }, [address]);
+  // Keep draft in sync when the cached name updates (external edit).
+  useEffect(() => { if (!editing) setDraft(name ?? ''); }, [name, editing]);
 
   const onSave = async () => {
     const trimmed = draft.trim();
@@ -763,26 +755,10 @@ function NameAndAvatarRow({ address }: { address: `0x${string}` }) {
       setErr('1-32 characters');
       return;
     }
-    setSaving(true);
     setErr(null);
-    try {
-      const r = await fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address, displayName: trimmed }),
-      });
-      const j = (await r.json()) as { ok?: boolean; error?: string };
-      if (!j.ok) {
-        setErr(j.error || 'save failed');
-      } else {
-        setName(trimmed);
-        setEditing(false);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'save failed');
-    } finally {
-      setSaving(false);
-    }
+    const res = await setProfile.mutateAsync({ address, displayName: trimmed });
+    if (!res.ok) setErr(res.error ?? 'save failed');
+    else setEditing(false);
   };
 
   return (
