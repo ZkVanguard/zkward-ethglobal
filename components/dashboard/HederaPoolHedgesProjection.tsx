@@ -25,9 +25,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, Activity, Info, ExternalLink, Anchor } from 'lucide-react';
+import { useLiveSignals } from '@/lib/hooks/useLiveSignals';
+import { useLivePrices } from '@/lib/hooks/useLivePrices';
 
 const ACCENT = '#00A79F';
-const PRICE_POLL_MS = 5000;
 
 type Symbol = 'BTC' | 'ETH' | 'SUI';
 type Side = 'LONG' | 'SHORT' | 'HOLD';
@@ -37,8 +38,6 @@ type Side = 'LONG' | 'SHORT' | 'HOLD';
 // the SIGNAL_FLIP_MIN_CONF default in CLAUDE.md's defense stack.
 const MIN_CONVICTION_PCT = 55;
 
-interface PriceRow { price: number; change24h?: number }
-interface PriceMap { [k: string]: PriceRow }
 interface SignalRow { side: Side; confidence: number; direction: 'UP' | 'DOWN' | 'NEUTRAL' }
 interface SignalMap { [k: string]: SignalRow }
 
@@ -71,46 +70,11 @@ interface Props {
 
 const ASSET_ALLOCATION = 0.30; // 30% of NAV per asset
 const LEVERAGE = 2;
+const PROJECTION_ASSETS = ['BTC', 'ETH', 'SUI'] as const;
 
-async function fetchPrices(): Promise<PriceMap> {
-  try {
-    const r = await fetch('/api/prices?symbols=BTC,ETH,SUI', { cache: 'no-store' });
-    if (!r.ok) return {};
-    const j = (await r.json()) as { data?: Array<{ symbol: string; price: number; change24h?: number }> };
-    const out: PriceMap = {};
-    for (const row of j.data ?? []) {
-      out[row.symbol] = { price: row.price, change24h: row.change24h };
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-async function fetchSignals(): Promise<SignalMap> {
-  try {
-    const r = await fetch('/api/predictions/per-asset?assets=BTC,ETH,SUI', { cache: 'no-store' });
-    if (!r.ok) return {};
-    const j = (await r.json()) as {
-      predictions?: Record<string, { direction?: 'UP' | 'DOWN' | 'NEUTRAL'; confidence?: number }>;
-    };
-    const out: SignalMap = {};
-    for (const [sym, p] of Object.entries(j.predictions ?? {})) {
-      const direction = p.direction ?? 'NEUTRAL';
-      const confidence = Math.round(p.confidence ?? 0);
-      // NEUTRAL or below-threshold → HOLD. No-conviction bets are the
-      // opposite of what an AI-managed vault should do; would rather sit
-      // in USDC than open a directional leg on weak signals.
-      let side: Side;
-      if (direction === 'NEUTRAL' || confidence < MIN_CONVICTION_PCT) side = 'HOLD';
-      else side = direction === 'DOWN' ? 'SHORT' : 'LONG';
-      out[sym] = { side, confidence, direction };
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
+// Prices + signals come from shared React Query hooks — same fetch
+// deduped with PoolStats projected-return metric. Numbers can't drift
+// between the panel below and the tile above.
 
 async function attestBasket(payload: {
   poolNavUsd: number;
@@ -148,34 +112,41 @@ function fmtPct(n: number, digits = 2): string {
 }
 
 export function HederaPoolHedgesProjection({ poolNavUsd }: Props) {
-  const [prices, setPrices] = useState<PriceMap>({});
-  const [signals, setSignals] = useState<SignalMap>({});
-  const [loaded, setLoaded] = useState(false);
+  const { data: pricesRaw } = useLivePrices(PROJECTION_ASSETS);
+  const { data: signalsRaw } = useLiveSignals(PROJECTION_ASSETS);
   const [attestation, setAttestation] = useState<Attestation | null>(null);
-
+  const [loaded, setLoaded] = useState(false);
   const entriesRef = useRef<Record<Symbol, number> | null>(null);
   const attestRef = useRef<boolean>(false);
 
+  const prices = pricesRaw ?? {};
+  // Adapt shared signals shape (direction + confidence) into the local
+  // SignalRow shape (adds derived side per conviction gate).
+  const signals: SignalMap = useMemo(() => {
+    const out: SignalMap = {};
+    if (!signalsRaw) return out;
+    for (const [sym, p] of Object.entries(signalsRaw)) {
+      const direction = p.direction ?? 'NEUTRAL';
+      const confidence = Math.round(p.confidence ?? 0);
+      // NEUTRAL or below-threshold → HOLD. No-conviction bets are the
+      // opposite of what an AI-managed vault should do; would rather sit
+      // in USDC than open a directional leg on weak signals.
+      let side: Side;
+      if (direction === 'NEUTRAL' || confidence < MIN_CONVICTION_PCT) side = 'HOLD';
+      else side = direction === 'DOWN' ? 'SHORT' : 'LONG';
+      out[sym] = { side, confidence, direction };
+    }
+    return out;
+  }, [signalsRaw]);
+
+  // Snap entry prices the first time we get a full BTC/ETH/SUI set.
   useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      const [p, s] = await Promise.all([fetchPrices(), fetchSignals()]);
-      if (cancelled) return;
-      if (Object.keys(p).length > 0) {
-        setPrices(p);
-        if (!entriesRef.current && p.BTC?.price && p.ETH?.price && p.SUI?.price) {
-          entriesRef.current = { BTC: p.BTC.price, ETH: p.ETH.price, SUI: p.SUI.price };
-          setLoaded(true);
-        }
-      }
-      if (Object.keys(s).length > 0) setSignals(s);
-    };
-    tick();
-    const iv = window.setInterval(() => {
-      if (!document.hidden) tick();
-    }, PRICE_POLL_MS);
-    return () => { cancelled = true; window.clearInterval(iv); };
-  }, []);
+    if (loaded) return;
+    if (prices.BTC?.price && prices.ETH?.price && prices.SUI?.price) {
+      entriesRef.current = { BTC: prices.BTC.price, ETH: prices.ETH.price, SUI: prices.SUI.price };
+      setLoaded(true);
+    }
+  }, [prices, loaded]);
 
   const positions: ProjectedPosition[] = useMemo(() => {
     if (!entriesRef.current) return [];

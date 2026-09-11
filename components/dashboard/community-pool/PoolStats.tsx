@@ -1,50 +1,17 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { PoolSummary, ChainKey } from './types';
 import { formatUSD } from './utils';
+import { useLiveSignals } from '@/lib/hooks/useLiveSignals';
+import { useLivePrices } from '@/lib/hooks/useLivePrices';
 
 // Assets the Hedera projection covers (BTC + ETH + SUI). Same set as
-// HederaPoolHedgesProjection. Equal weight per leg.
+// HederaPoolHedgesProjection — both components read from the shared
+// useLiveSignals / useLivePrices hooks, so numbers are guaranteed to
+// match and there's a single deduped fetch behind them.
 const PROJECTION_ASSETS = ['BTC', 'ETH', 'SUI'] as const;
 const PROJECTION_LEVERAGE = 2;
-
-interface PredictionRow { direction?: 'UP' | 'DOWN' | 'NEUTRAL'; confidence?: number }
-interface PriceRow { symbol: string; price: number; change24h?: number }
-
-// 24h projected return of a hypothetical AI-run vault: equal-weight across
-// BTC/ETH/SUI, long when direction=UP, short when direction=DOWN, out
-// (contribute 0) when NEUTRAL/missing. Return is at 2× leverage on the
-// current 24h move. Honest hypothetical — labelled clearly in the UI as
-// "if AI executed".
-async function fetchProjectedReturn(): Promise<{ returnPct: number; anyActive: boolean } | null> {
-  try {
-    const [predRes, priceRes] = await Promise.all([
-      fetch(`/api/predictions/per-asset?assets=${PROJECTION_ASSETS.join(',')}`),
-      fetch(`/api/prices?symbols=${PROJECTION_ASSETS.join(',')}`),
-    ]);
-    const pred = (await predRes.json()) as { predictions?: Record<string, PredictionRow> };
-    const priceJ = (await priceRes.json()) as { data?: PriceRow[] };
-    const priceMap = new Map((priceJ.data ?? []).map((p) => [p.symbol, p.change24h]));
-    let sum = 0;
-    let active = 0;
-    for (const asset of PROJECTION_ASSETS) {
-      const dir = pred.predictions?.[asset]?.direction;
-      const ch = priceMap.get(asset);
-      if (typeof ch !== 'number' || !dir || dir === 'NEUTRAL') continue;
-      const side = dir === 'DOWN' ? -1 : 1;
-      sum += ch * side * PROJECTION_LEVERAGE;
-      active++;
-    }
-    // Equal-weight across the full 3-leg basket even if some legs sit out —
-    // matches how the vault would allocate (unused legs stay in USDC = 0
-    // contribution).
-    return { returnPct: (sum / PROJECTION_ASSETS.length) * 100, anyActive: active > 0 };
-  } catch {
-    return null;
-  }
-}
 
 interface PoolStatsProps {
   poolData: PoolSummary;
@@ -106,14 +73,22 @@ export const PoolStats = memo(function PoolStats({ poolData, selectedChain }: Po
   // Projected 24h return @ 2× — Hedera only, since Hedera share price is
   // pinned to \$1.00 by design (ERC-4626-lite math). Answers the user
   // question "what would this look like if the AI actually executed?".
-  const projected = useQuery({
-    queryKey: ['projected-return', 'hedera'],
-    queryFn: fetchProjectedReturn,
-    enabled: isHedera,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
-  const projectedPct = projected.data?.returnPct ?? null;
+  // Reads from the shared useLiveSignals + useLivePrices hooks so the
+  // number here matches the projected-hedges panel below exactly.
+  const { data: signals } = useLiveSignals(PROJECTION_ASSETS);
+  const { data: prices } = useLivePrices(PROJECTION_ASSETS);
+  const projectedPct = useMemo(() => {
+    if (!isHedera || !signals || !prices) return null;
+    let sum = 0;
+    for (const asset of PROJECTION_ASSETS) {
+      const dir = signals[asset]?.direction;
+      const ch = prices[asset]?.change24h;
+      if (typeof ch !== 'number' || !dir || dir === 'NEUTRAL') continue;
+      const side = dir === 'DOWN' ? -1 : 1;
+      sum += ch * side * PROJECTION_LEVERAGE;
+    }
+    return (sum / PROJECTION_ASSETS.length) * 100;
+  }, [isHedera, signals, prices]);
   const projectedShare = projectedPct != null ? 1 + projectedPct / 100 : null;
   const staleAgeLabel = poolData.staleAgeSeconds != null
     ? formatStaleAge(poolData.staleAgeSeconds)
