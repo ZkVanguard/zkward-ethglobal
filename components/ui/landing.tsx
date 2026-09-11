@@ -7,17 +7,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 
-// ─── PageShell ──────────────────────────────────────────────────────────
-// Top-level wrapper for a marketing page. Standardises canvas color + text
-// color so pages don't drift. Do NOT put max-width here — use <Section>.
-export function PageShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="bg-system-bg-primary text-label-primary min-h-screen">
-      {children}
-    </div>
-  );
-}
-
 // ─── Section ────────────────────────────────────────────────────────────
 // Vertical rhythm + horizontal padding + max-width in one component.
 // `tone` alternates the background between plain and tinted panel to give
@@ -177,29 +166,6 @@ export function SectionHeader({
         <p className={`text-sm sm:text-callout md:text-[18px] text-label-secondary ${ledeMax} leading-relaxed sm:leading-[1.5] px-1`}>
           {lede}
         </p>
-      )}
-    </div>
-  );
-}
-
-// ─── StatTile ───────────────────────────────────────────────────────────
-// Small labeled number tile. Replaces the ad-hoc StatCard patterns each
-// page was reinventing.
-export function StatTile({
-  label, value, hint, loading = false,
-}: {
-  label: string; value: string; hint?: string; loading?: boolean;
-}) {
-  return (
-    <div className="bg-system-bg-primary rounded-ios-xl p-3 sm:p-5 md:p-6 shadow-ios-1 border border-separator-opaque/30 min-w-0">
-      <div className="text-[10px] sm:text-caption-1 font-medium uppercase tracking-wide text-label-tertiary mb-1.5 sm:mb-2 truncate">
-        {label}
-      </div>
-      <div className={`text-lg sm:text-title-2 md:text-title-1 font-semibold tabular-nums break-all text-label-primary ${loading ? 'animate-pulse' : ''}`}>
-        {value}
-      </div>
-      {hint && (
-        <div className="text-[10px] sm:text-caption-1 text-label-tertiary mt-1 sm:mt-1.5 tabular-nums truncate">{hint}</div>
       )}
     </div>
   );
