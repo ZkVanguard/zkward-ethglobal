@@ -3,6 +3,7 @@
 import { useState, memo, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Shield, TrendingUp, TrendingDown, CheckCircle, ExternalLink, RefreshCw, Wallet, Lock, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePolling, useToggle } from '@/lib/hooks';
 import { useApiAuth } from '@/lib/hooks/useApiAuth';
 import { useHedgeRecommendations } from '@/contexts/AIDecisionsContext';
@@ -10,6 +11,7 @@ import { logger } from '@/lib/utils/logger';
 import { useWalletClient, useChainId } from '@/lib/evm-wallet/hooks';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { getExplorerUrl, getNetworkName, CHAIN_IDS } from '@/lib/utils/network';
+import type { PriceRow } from '@/lib/hooks/useLivePrices';
 import {
   HedgeDetailModal,
   CloseConfirmModal,
@@ -30,6 +32,7 @@ export const ActiveHedges = memo(function ActiveHedges({ address, compact = fals
   const { data: walletClient } = useWalletClient();
   const chainId = useChainId();
   const { getAuthHeaders } = useApiAuth(address);
+  const queryClient = useQueryClient();
   
   // Get dynamic contract addresses based on connected chain
   const contractAddresses = useMemo(() => getContractAddresses(chainId || CHAIN_IDS.CRONOS_TESTNET), [chainId]);
@@ -322,14 +325,25 @@ export const ActiveHedges = memo(function ActiveHedges({ address, compact = fals
     const actionLeverage = action.leverage || 5;
     
     // action.size is in ASSET units (e.g. 0.125 BTC), but the gasless endpoint
-    // expects collateralAmount in USDC. Convert: collateral = size * price / leverage
+    // expects collateralAmount in USDC. Convert: collateral = size * price / leverage.
+    //
+    // Try the shared useLivePrices React Query cache first — Pool tab
+    // pre-warms it with BTC/ETH/SUI on mount, so we usually hit for free.
+    // Falls back to a fresh imperative fetch if the asset isn't in cache.
     let currentPrice = 1000;
     try {
-      // Use server-side API to avoid CORS issues
-      const priceResponse = await fetch(`/api/prices?symbol=${action.asset}`);
-      const priceData = await priceResponse.json();
-      if (priceData.success && priceData.data?.price) {
-        currentPrice = priceData.data.price;
+      const symbol = action.asset.toUpperCase();
+      const cached = queryClient.getQueriesData<Record<string, PriceRow>>({ queryKey: ['live-prices'] });
+      for (const [, data] of cached) {
+        const hit = data?.[symbol]?.price;
+        if (typeof hit === 'number' && hit > 0) { currentPrice = hit; break; }
+      }
+      if (currentPrice === 1000) {
+        const priceResponse = await fetch(`/api/prices?symbol=${action.asset}`);
+        const priceData = await priceResponse.json();
+        if (priceData.success && priceData.data?.price) {
+          currentPrice = priceData.data.price;
+        }
       }
     } catch {
       logger.warn('Failed to fetch price for collateral calc, using fallback', { component: 'ActiveHedges' });

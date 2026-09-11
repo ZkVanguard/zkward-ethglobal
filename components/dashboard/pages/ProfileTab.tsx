@@ -3,51 +3,34 @@
 /**
  * ProfileTab — user identity + account controls.
  *
- * Replaces the standalone `onboard` (redundant with Sign-In modal) and
- * `perps (sim)` (simulated stub) dashboard tabs. Consolidates:
- *   - Display name (editable, persisted via /api/profile)
- *   - Avatar (deterministic identicon, shared with community leaderboard)
- *   - Wallet address (copy + HashScan link)
- *   - Auth method (email / Google / wallet, from Privy user object)
- *   - Sign-out
- *
- * Anonymous users see a prompt to sign in via the header's Sign In
- * button — no duplicate Privy modal here; that lives on the Pool tab
- * and in the top-right navbar.
+ * Reads EVERYTHING through the shared useUserSession() hook — one hook,
+ * one object, coherent with every other surface. Editing the display
+ * name here invalidates the shared cache so the Pool tab's wallet card
+ * refetches automatically.
  */
 
 import { useEffect, useState } from 'react';
-import { usePrivy, useLogout } from '@privy-io/react-auth';
 import { Copy, Check, ExternalLink, Pencil, LogOut, Mail, Chrome, Wallet as WalletIcon, User } from 'lucide-react';
 import { WalletAvatar } from '@/components/ui/WalletAvatar';
-import { usePrivyEmbeddedAddress, usePrivyEmbeddedStatus } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
-import { useWalletProfile, useSetWalletProfile } from '@/lib/hooks/useWalletProfile';
+import { useUserSession } from '@/lib/hooks/useUserSession';
+import { useSetWalletProfile } from '@/lib/hooks/useWalletProfile';
 import { ConnectPromptButton } from '@/components/ui/ConnectPromptButton';
 
 const HEDERA_ACCENT = '#00A79F';
 
-interface PrivyUserLike {
-  email?: { address?: string } | null;
-  google?: { email?: string } | null;
-  createdAt?: number | string;
-}
-
-function formatJoinedDate(raw: number | string | undefined): string | null {
-  if (!raw) return null;
-  const d = typeof raw === 'number' ? new Date(raw) : new Date(raw);
-  if (isNaN(d.getTime())) return null;
+function formatJoinedDate(d: Date | null): string | null {
+  if (!d) return null;
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
 }
 
 export function ProfileTab() {
-  const address = usePrivyEmbeddedAddress();
-  const privyStatus = usePrivyEmbeddedStatus();
+  const session = useUserSession();
 
-  if (!privyStatus.ready) {
+  if (!session.ready) {
     return <div className="p-8 text-center text-label-tertiary text-sm">Loading account…</div>;
   }
 
-  if (!privyStatus.authenticated || !address) {
+  if (!session.authenticated || !session.address) {
     return (
       <div className="p-8 sm:p-12 text-center">
         <User className="w-10 h-10 text-label-tertiary mx-auto mb-3" />
@@ -63,16 +46,13 @@ export function ProfileTab() {
     );
   }
 
-  return <ProfileTabAuthed address={address} />;
+  return <ProfileTabAuthed session={session} />;
 }
 
-function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
-  const { user } = usePrivy() as { user: PrivyUserLike | null };
-  const { logout } = useLogout();
-
-  const { data: profile } = useWalletProfile(address);
+function ProfileTabAuthed({ session }: { session: ReturnType<typeof useUserSession> }) {
   const setProfileMut = useSetWalletProfile();
-  const name = profile?.displayName ?? null;
+  const name = session.displayName;
+  const address = session.address as `0x${string}`;
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -80,7 +60,6 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
   const [copied, setCopied] = useState(false);
   const saving = setProfileMut.isPending;
 
-  // Keep draft in sync when the cached name updates externally.
   useEffect(() => { if (!editing) setDraft(name ?? ''); }, [name, editing]);
 
   const onSaveName = async () => {
@@ -101,12 +80,7 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const emailAddr = user?.email?.address ?? user?.google?.email ?? null;
-  const authMethod: 'email' | 'google' | 'wallet' =
-    user?.google?.email ? 'google' :
-    user?.email?.address ? 'email' :
-    'wallet';
-  const joinedLabel = formatJoinedDate(user?.createdAt);
+  const joinedLabel = formatJoinedDate(session.joinedAt);
 
   return (
     <div className="p-4 sm:p-6 space-y-5 min-w-0">
@@ -197,6 +171,21 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
         </div>
       </div>
 
+      {/* Balances card */}
+      <div className="rounded-2xl border border-black/5 bg-white p-5">
+        <h3 className="text-[13px] font-semibold uppercase tracking-wide text-label-tertiary mb-3">
+          Balances
+        </h3>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <BalanceTile label="HBAR" value={session.balances.hbarHuman.toLocaleString(undefined, { maximumFractionDigits: 4 })} />
+          <BalanceTile label="USDC" value={session.balances.usdcHuman.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+          <BalanceTile label="Shares" value={session.balances.sharesHuman.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+        </div>
+        <div className="text-[11px] text-label-tertiary mt-3">
+          Refreshes every 15s. Shares = your slice of the AI-managed vault.
+        </div>
+      </div>
+
       {/* Account card */}
       <div className="rounded-2xl border border-black/5 bg-white p-5">
         <h3 className="text-[13px] font-semibold uppercase tracking-wide text-label-tertiary mb-3">
@@ -204,17 +193,17 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
         </h3>
         <div className="space-y-3 text-[14px]">
           <div className="flex items-center gap-3">
-            {authMethod === 'google' && <Chrome className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
-            {authMethod === 'email' && <Mail className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
-            {authMethod === 'wallet' && <WalletIcon className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
+            {session.authMethod === 'google' && <Chrome className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
+            {session.authMethod === 'email' && <Mail className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
+            {session.authMethod === 'wallet' && <WalletIcon className="w-4 h-4 text-label-tertiary flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-label-primary">
-                {authMethod === 'google' && 'Signed in with Google'}
-                {authMethod === 'email' && 'Signed in with email'}
-                {authMethod === 'wallet' && 'Signed in with wallet'}
+                {session.authMethod === 'google' && 'Signed in with Google'}
+                {session.authMethod === 'email' && 'Signed in with email'}
+                {session.authMethod === 'wallet' && 'Signed in with wallet'}
               </div>
-              {emailAddr && (
-                <div className="text-[12px] text-label-tertiary truncate">{emailAddr}</div>
+              {session.emailAddress && (
+                <div className="text-[12px] text-label-tertiary truncate">{session.emailAddress}</div>
               )}
             </div>
           </div>
@@ -222,6 +211,11 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
             <div className="flex items-center gap-3">
               <User className="w-4 h-4 text-label-tertiary flex-shrink-0" />
               <div className="text-label-primary">Joined {joinedLabel}</div>
+            </div>
+          )}
+          {session.needsChainSwitch && (
+            <div className="text-[12px] text-[#FF9500]">
+              Wallet is on chain {session.chainId}. Deposit/withdraw actions on the Pool tab will switch to Hedera Testnet (296).
             </div>
           )}
           <div className="text-[12px] text-label-tertiary pt-1">
@@ -233,13 +227,22 @@ function ProfileTabAuthed({ address }: { address: `0x${string}` }) {
       {/* Sign-out */}
       <div className="flex justify-end">
         <button
-          onClick={() => logout()}
+          onClick={() => void session.logout()}
           className="inline-flex items-center gap-2 h-10 px-4 rounded-lg text-[14px] font-medium text-[#FF3B30] bg-[#FF3B30]/8 hover:bg-[#FF3B30]/12 active:scale-[0.98]"
         >
           <LogOut className="w-4 h-4" />
           Sign out
         </button>
       </div>
+    </div>
+  );
+}
+
+function BalanceTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-system-bg-secondary p-3 min-w-0">
+      <div className="text-[10px] text-label-tertiary uppercase tracking-wide">{label}</div>
+      <div className="text-[16px] sm:text-[18px] font-semibold tabular-nums text-label-primary break-all">{value}</div>
     </div>
   );
 }
