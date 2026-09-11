@@ -18,8 +18,8 @@ import {
   ShieldCheck,
   Layers,
   MoreHorizontal,
-  Sparkles,
   Coins,
+  UserCog,
 } from 'lucide-react';
 import { MobileTabBar } from '@/components/dashboard/MobileTabBar';
 import { useContractAddresses } from '@/lib/contracts/hooks';
@@ -170,14 +170,6 @@ const B2bAdminPanel = nextDynamic(
   { loading: () => <LoadingSkeleton />, ssr: false },
 );
 
-// Privy financial flow — email → embedded wallet → fund → send. Same
-// lazy pattern as the admin panel.
-const PrivyFinancialFlow = nextDynamic(
-  () =>
-    import('@/components/dashboard/PrivyFinancialFlow').then((mod) => ({ default: mod.PrivyFinancialFlow })),
-  { loading: () => <LoadingSkeleton />, ssr: false },
-);
-
 // Hedera x402 agent payments demo — pay-per-call inference with HCS audit trail.
 const HederaAgentPayments = nextDynamic(
   () =>
@@ -185,10 +177,11 @@ const HederaAgentPayments = nextDynamic(
   { loading: () => <LoadingSkeleton />, ssr: false },
 );
 
-// Simulated live perps on Hedera Testnet — real prices, local positions.
-const HederaPerpsPanel = nextDynamic(
+// User profile + settings — replaces the old `onboard` and `perps` tabs.
+// Sign-in is handled by the navbar; this tab shows identity + preferences.
+const ProfileTab = nextDynamic(
   () =>
-    import('@/components/dashboard/HederaPerpsPanel').then((mod) => ({ default: mod.HederaPerpsPanel })),
+    import('@/components/dashboard/pages/ProfileTab').then((mod) => ({ default: mod.ProfileTab })),
   { loading: () => <LoadingSkeleton />, ssr: false },
 );
 
@@ -225,10 +218,9 @@ const platformItems: NavItem[] = [
   { id: 'portfolio', label: 'Portfolio', icon: Layers },
   { id: 'risk', label: 'Risk', icon: Activity },
   { id: 'custody', label: 'Custody', icon: ShieldCheck },
-  { id: 'onboard', label: 'Onboard', icon: Sparkles, badge: 'Privy' },
   { id: 'admin', label: 'B2B Admin', icon: Settings, badge: 'Privy' },
   { id: 'x402', label: 'Agent Payments', icon: Coins, badge: 'Hedera' },
-  { id: 'perps', label: 'Perps (sim)', icon: Activity, badge: 'Hedera' },
+  { id: 'profile', label: 'Profile', icon: UserCog },
 ];
 
 type NavId = (typeof navItems)[number]['id'] | (typeof platformItems)[number]['id'];
@@ -967,17 +959,8 @@ export default function DashboardPage() {
       case 'custody':
         return <CustodyTab />;
 
-      case 'onboard':
-        return (
-          <Card>
-            <CardHeader
-              title="Zero-friction onboarding"
-              subtitle="Email → embedded wallet → fund → deposit — all via Privy"
-              badge={<Badge color="teal">PRIVY FLOW</Badge>}
-            />
-            <PrivyFinancialFlow />
-          </Card>
-        );
+      case 'profile':
+        return <ProfileTab />;
 
       case 'admin':
         return (
@@ -1000,18 +983,6 @@ export default function DashboardPage() {
               badge={<Badge color="teal">x402 · HEDERA</Badge>}
             />
             <HederaAgentPayments />
-          </Card>
-        );
-
-      case 'perps':
-        return (
-          <Card>
-            <CardHeader
-              title="Simulated perps · Hedera Testnet"
-              subtitle="Real prices, local positions — no on-chain DEX yet"
-              badge={<Badge color="teal">SIMULATED</Badge>}
-            />
-            <HederaPerpsPanel />
           </Card>
         );
 

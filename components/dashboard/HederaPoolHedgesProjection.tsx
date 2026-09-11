@@ -3,7 +3,7 @@
 /**
  * Projected pool hedges for the Hedera vault.
  *
- * Not user-opened positions (that's HederaPerpsPanel) — these are the
+ * Not user-opened positions — these are the
  * perp positions the AI would open on behalf of the pool based on its
  * current NAV + the platform's hedging heuristic. Real prices, real
  * signal-fused directional bias, real HCS attestation of the entry
