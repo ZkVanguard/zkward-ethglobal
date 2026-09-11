@@ -466,5 +466,8 @@ docs/submission-evidence/pr-43-snapshot-2026-09-08.md
 # Scope to repo root only so we don't accidentally hide legit committed
 # images under public/, docs/, etc.
 /*.png
+# Demo screenshots — captured via playwright, regenerable, bulky binary.
+# demo/README.md IS committed (reusable cheat sheet).
+demo/screenshots/**
 /*.jpeg
 /*.webp
