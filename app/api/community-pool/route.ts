@@ -337,43 +337,79 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get leaderboard - ALWAYS use on-chain as authoritative source
-    // DB is a cache that can have stale data or ghost entries
+    // Get leaderboard - source varies by chain:
+    //   hedera: subgraph adapter (SimpleUsdcVaultV2 has no memberList()
+    //           function — getAllOnChainMembers reverts on it)
+    //   others: on-chain via getMemberCount() + memberList(i) + members(addr)
+    // Display names come from wallet_profiles table (best-effort — no names
+    // yet? subgraph addresses stand alone with deterministic identicon).
     if (action === 'leaderboard') {
       const limit = Math.min(parseInt(searchParams.get('limit') || '10', 10), 100);
+      const origin = new URL(request.url).origin;
 
-      // On-chain is authoritative - always use it
-      const onChainMembers = await getAllOnChainMembers(chainConfig);
-      if (onChainMembers && onChainMembers.length > 0) {
-        // Filter to only active members (shares > 0)
-        const activeMembers = onChainMembers.filter((m) => m.shares > 0);
-        const totalShares = activeMembers.reduce((sum, m) => sum + m.shares, 0);
-        const leaderboard = activeMembers
-          .sort((a, b) => b.shares - a.shares)
-          .slice(0, limit)
-          .map((m) => ({
-            walletAddress: m.walletAddress,
-            shares: m.shares,
-            percentage: totalShares > 0 ? (m.shares / totalShares) * 100 : 0,
-          }));
+      let leaderboardRaw: Array<{ walletAddress: string; shares: number }> = [];
+      let source = 'none';
 
-        return cachedJsonResponse(
-          {
-            success: true,
-            leaderboard,
-            count: activeMembers.length, // Count of ACTIVE members, not historical
-            source: 'onchain',
-          },
-          60
-        ); // CDN cache for 60 seconds
+      if (chainKey === 'hedera') {
+        // Adapter serves the ERC-4626-lite vault at share-price = 1, so
+        // shares field is already share balance in 6-decimal micros.
+        try {
+          const gqlRes = await fetch(`${origin}/api/subgraph/hedera`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              query: `{ members(first: ${limit * 3}) { address currentShares totalDeposited } }`,
+            }),
+            // signal-only server-fetch — no auth header needed
+          });
+          const gql = (await gqlRes.json()) as {
+            data?: { members?: Array<{ address: string; currentShares: string; totalDeposited: string }> };
+          };
+          const members = (gql.data?.members ?? [])
+            .map((m) => ({
+              walletAddress: m.address,
+              shares: Number(m.currentShares) / 1e6,
+            }))
+            .filter((m) => m.shares > 0);
+          if (members.length > 0) {
+            leaderboardRaw = members;
+            source = 'hedera-adapter';
+          }
+        } catch { /* fall through to empty */ }
+      } else {
+        const onChainMembers = await getAllOnChainMembers(chainConfig);
+        if (onChainMembers && onChainMembers.length > 0) {
+          leaderboardRaw = onChainMembers.filter((m) => m.shares > 0);
+          source = 'onchain';
+        }
       }
 
-      return cachedJsonResponse({
-        success: true,
-        leaderboard: [],
-        count: 0,
-        source: 'none',
-      });
+      if (leaderboardRaw.length === 0) {
+        return cachedJsonResponse({ success: true, leaderboard: [], count: 0, source });
+      }
+
+      const totalShares = leaderboardRaw.reduce((sum, m) => sum + m.shares, 0);
+      const sorted = leaderboardRaw.sort((a, b) => b.shares - a.shares).slice(0, limit);
+
+      // Enrich with display names (best-effort). Table auto-creates on
+      // first call; empty result = no names set, avatars still render.
+      let profiles: Record<string, { displayName: string | null }> = {};
+      try {
+        const { getWalletProfiles } = await import('@/lib/db/wallet-profiles');
+        profiles = await getWalletProfiles(sorted.map((m) => m.walletAddress));
+      } catch { /* no profiles service — that's ok */ }
+
+      const leaderboard = sorted.map((m) => ({
+        walletAddress: m.walletAddress,
+        shares: m.shares,
+        percentage: totalShares > 0 ? (m.shares / totalShares) * 100 : 0,
+        displayName: profiles[m.walletAddress.toLowerCase()]?.displayName ?? null,
+      }));
+
+      return cachedJsonResponse(
+        { success: true, leaderboard, count: leaderboardRaw.length, source },
+        60,
+      );
     }
 
     // Get live prices

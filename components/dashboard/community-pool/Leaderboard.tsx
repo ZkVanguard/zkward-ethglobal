@@ -1,9 +1,10 @@
 'use client';
 
 import { memo } from 'react';
-import { Award, Shield, Wallet, ExternalLink, CheckCircle2, Database } from 'lucide-react';
+import { Award, Shield, ExternalLink, CheckCircle2, Database } from 'lucide-react';
 import type { LeaderboardEntry } from './types';
 import { formatPercent } from './utils';
+import { WalletAvatar } from '@/components/ui/WalletAvatar';
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
   /** Total member count (may exceed `entries.length` if the leaderboard is
@@ -198,10 +199,12 @@ export const Leaderboard = memo(function Leaderboard({
             {entries
               .filter((user) => user?.walletAddress)
               .map((user, index) => {
+                const truncated = `${user.walletAddress.slice(0, 6)}…${user.walletAddress.slice(-4)}`;
+                const displayName = user.displayName?.trim() || null;
                 return (
                   <div
                     key={user.walletAddress}
-                    className="flex items-center justify-between gap-3 p-2 sm:p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+                    className="flex items-center justify-between gap-3 p-2 sm:p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 min-w-0"
                   >
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       <span
@@ -212,16 +215,20 @@ export const Leaderboard = memo(function Leaderboard({
                       >
                         {index + 1}
                       </span>
+                      <WalletAvatar address={user.walletAddress} name={displayName} size={32} />
                       <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex items-center gap-1 min-w-0">
-                          <Wallet className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                          <span className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-300 font-mono truncate">
-                            {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
-                          </span>
-                        </div>
-                        <span className="text-[9px] sm:text-[10px] text-purple-500 dark:text-purple-400">
-                          via Treasury Proxy
+                        <span className="text-[13px] sm:text-sm font-semibold text-label-primary truncate">
+                          {displayName ?? truncated}
                         </span>
+                        {displayName ? (
+                          <span className="text-[10px] sm:text-[11px] text-label-tertiary font-mono truncate">
+                            {truncated}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] sm:text-[10px] text-label-tertiary">
+                            no name set
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">

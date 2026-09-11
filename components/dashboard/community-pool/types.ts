@@ -89,6 +89,8 @@ export interface LeaderboardEntry {
   shares: number;
   percentage: number;
   valueUSD?: number;
+  /** Display name from wallet_profiles table (null if not set). */
+  displayName?: string | null;
 }
 
 export interface CommunityPoolProps {

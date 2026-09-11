@@ -25,11 +25,12 @@ import {
   useWaitForTransactionReceipt,
   useSwitchChain,
 } from 'wagmi';
-import { Plus, Minus, Loader2, Check, ExternalLink, AlertTriangle, Wallet, Droplets, Copy } from 'lucide-react';
+import { Plus, Minus, Loader2, Check, ExternalLink, AlertTriangle, Wallet, Droplets, Copy, Pencil } from 'lucide-react';
 import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
 import { hederaTestnet } from '@/lib/evm-wallet/wagmi-config';
 import { usePrivyEmbeddedAddress, usePrivyEmbeddedStatus } from '@/lib/evm-wallet/usePrivyEmbeddedAddress';
 import { usePrivySender } from '@/lib/evm-wallet/usePrivySender';
+import { WalletAvatar } from '@/components/ui/WalletAvatar';
 
 const HEDERA_TESTNET_ID = 296;
 const USDC_DECIMALS = 6;
@@ -449,13 +450,14 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
           need to see this address clearly. Sits above the deposit UI so it's
           the first thing seen when landing on the pool tab. */}
       {address ? (
-        <div className="rounded-xl border p-3" style={{ borderColor: `${HEDERA_ACCENT}30`, background: `${HEDERA_ACCENT}08` }}>
-          <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: `${HEDERA_ACCENT}30`, background: `${HEDERA_ACCENT}08` }}>
+          <div className="flex items-center justify-between gap-2">
             <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: HEDERA_ACCENT }}>
               Your Hedera wallet · USDC lands here
             </div>
             <span className="text-[10px] text-label-tertiary">Hedera Testnet · chainId 296</span>
           </div>
+          <NameAndAvatarRow address={address} />
           <div className="flex items-center gap-2">
             <code className="flex-1 min-w-0 truncate font-mono text-[12px] text-label-primary tabular-nums">{address}</code>
             <button
@@ -725,4 +727,107 @@ async function waitForTx(hash: `0x${string}`, maxWaitMs = 30_000): Promise<void>
     await new Promise((res) => setTimeout(res, 2000));
   }
   throw new Error('approve tx timed out');
+}
+
+/**
+ * NameAndAvatarRow — shows the user's avatar + current display name (or
+ * "Set your name" prompt) inside the wallet card. Click Pencil to edit
+ * inline; POST to /api/profile persists. Name shows up on the community
+ * leaderboard for everyone else.
+ */
+function NameAndAvatarRow({ address }: { address: `0x${string}` }) {
+  const [name, setName] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Load profile on mount + on address change.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/profile?addresses=${address}`)
+      .then((r) => r.json())
+      .then((j: { profiles?: Record<string, { displayName: string | null }> }) => {
+        if (!alive) return;
+        const n = j.profiles?.[address.toLowerCase()]?.displayName ?? null;
+        setName(n);
+        setDraft(n ?? '');
+      })
+      .catch(() => { /* ignore — name is optional */ });
+    return () => { alive = false; };
+  }, [address]);
+
+  const onSave = async () => {
+    const trimmed = draft.trim();
+    if (trimmed.length < 1 || trimmed.length > 32) {
+      setErr('1-32 characters');
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address, displayName: trimmed }),
+      });
+      const j = (await r.json()) as { ok?: boolean; error?: string };
+      if (!j.ok) {
+        setErr(j.error || 'save failed');
+      } else {
+        setName(trimmed);
+        setEditing(false);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      <WalletAvatar address={address} name={name} size={36} />
+      {editing ? (
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSave();
+              if (e.key === 'Escape') { setEditing(false); setDraft(name ?? ''); setErr(null); }
+            }}
+            maxLength={32}
+            placeholder="Your name (max 32)"
+            disabled={saving}
+            className="flex-1 min-w-0 h-8 px-2 rounded-md border border-black/10 bg-white text-[13px] focus:outline-none focus:ring-1 focus:ring-black/20"
+          />
+          <button
+            onClick={onSave}
+            disabled={saving || draft.trim().length < 1}
+            className="flex-shrink-0 h-8 px-2.5 rounded-md text-[12px] font-semibold text-white active:scale-[0.97] disabled:opacity-60"
+            style={{ background: HEDERA_ACCENT }}
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <span className="flex-1 min-w-0 truncate text-[13px] font-semibold text-label-primary">
+            {name ?? <span className="text-label-tertiary font-normal">No display name set</span>}
+          </span>
+          <button
+            onClick={() => { setEditing(true); setDraft(name ?? ''); setErr(null); }}
+            className="flex-shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-medium text-label-secondary hover:bg-white/60 active:scale-[0.97]"
+            title={name ? 'Change your name' : 'Set your display name'}
+          >
+            <Pencil className="w-3 h-3" />
+            {name ? 'Edit' : 'Set name'}
+          </button>
+        </div>
+      )}
+      {err && <span className="text-[10px] text-[#FF3B30]">{err}</span>}
+    </div>
+  );
 }
