@@ -55,7 +55,7 @@ export async function generateMetadata(
   const t = await getTranslations({ locale, namespace: 'hero' });
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://zkward.com';
-  const title = 'ZkWard — Autonomous SUI vault, ZK-STARK attested';
+  const title = 'ZkWard — Multi-chain autonomous vault, ZK-STARK attested';
   const description = t('subtitle');
 
   return {
@@ -67,7 +67,7 @@ export async function generateMetadata(
       template: '%s · ZkWard',
     },
     description,
-    keywords: ['SUI', 'DeFi', 'ZK-STARK', 'AI agents', 'autonomous vault', 'prediction markets', 'RWA', 'BlueFin'],
+    keywords: ['Hedera', 'SUI', 'DeFi', 'ZK-STARK', 'AI agents', 'autonomous vault', 'The Graph', 'x402', 'prediction markets', 'RWA', 'BlueFin'],
     authors: [{ name: 'ZkWard Team' }],
     icons: {
       icon: '/logo-official.svg',
