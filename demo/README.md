@@ -8,7 +8,7 @@ Everything needed to record and submit the 3-min sponsor-track demo.
 - [ ] Cookie banner dismissed on `zkward.com` (accept once, refresh, done)
 - [ ] Tabs pre-loaded in order (see [Cheat sheet](#cheat-sheet) below)
 - [ ] Terminal ready: `bun run scripts/demo-x402-permit.ts` (paste-ready, don't press Enter yet)
-- [ ] Warm caches: `curl -sf https://www.zkward.com/api/judges/status | jq '.passed'` → must be 11
+- [ ] Warm caches: `curl -sf https://www.zkward.com/api/judges/status | jq '.passed'` → must be 13
 - [ ] Water sip · dry run once · record
 
 ## Cheat sheet — 7 chapters × ~30s = 3:00 total
@@ -21,7 +21,7 @@ Everything needed to record and submit the 3-min sponsor-track demo.
 | **4** | 1:15–1:45 | Studio playground (see [URL](#preloaded-studio-playground-url) below) — press **Play** | `_meta.deployment: "QmZghNU…"` (IPFS hash), `pools[0].network: "sepolia"`, real transactions | "**Graph track — Composable Standardized.** One GraphQL schema, two backends. Studio subgraph on Sepolia — account 1758819 is mine, IPFS deployment hash is content-addressed. Same schema is served on Hedera by our npm package." |
 | **5** | 1:45–2:15 | `www.zkward.com/dashboard` → **Multi-chain AI Vaults** panel | Both cards: **Sepolia $1,985 TVL** left, **Hedera $60,070 TVL** right, both "ok" | "Same query fires against both. Left: Studio. Right: our adapter reading Hedera Mirror Node. The Graph doesn't index Hedera natively — 129 EVM chains, Hedera not among them — so we shipped the bridge as open-source npm." |
 | **6** | 2:15–2:40 | `/dashboard` → **Sign In** → Privy modal | Modal: **email / Google / wallet** options | "**Privy track — Financial Flow + B2B.** Users log in with email, get an embedded wallet, deposit — no seed phrase. For institutional actions we layer N-of-M quorum on the admin endpoint. One integration, both surfaces." |
-| **7** | 2:40–3:00 | `www.zkward.com/judges` | **11 / 11 green** pill + check list | "Every claim green, right now. Eleven live checks against Mirror Node, HCS, our routes, Graph Studio, npm. Refresh any time. Bridged, standardized, verifiable, shipped." |
+| **7** | 2:40–3:00 | `www.zkward.com/judges` | **13 / 13 green** pill + check list + **"Explore the subgraph"** section with both playground links | "Every claim green, right now. Thirteen live checks against Mirror Node, HCS, our routes, Graph Studio, Apollo Sandbox on Hedera, npm. Refresh any time. Bridged, standardized, verifiable, shipped." |
 
 **Kill list — do NOT say:** so / basically / essentially / um / kind of / hypothetical / if it worked / in theory.
 
@@ -35,7 +35,7 @@ https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0/graphql?query=%7B%20
 
 ## Screenshot inventory
 
-All shots captured 2026-09-10 at 1440×900 unless noted. Live in `demo/screenshots/`.
+Captured at 1440×900. `demo-01`, `demo-04`, `demo-07`, `demo-08`, `verify-judges-13-of-13` refreshed 2026-09-12 (dual-playground /judges section + Apollo Sandbox on Hedera + fresh Sepolia GraphiQL execution). Superseded originals archived under `demo/screenshots/archive-2026-09-12/`. Other shots captured 2026-09-10. Live in `demo/screenshots/`.
 
 ### Chapter fallbacks (use if a live tab is slow)
 
@@ -44,10 +44,11 @@ All shots captured 2026-09-10 at 1440×900 unless noted. Live in `demo/screensho
 | 1 | `demo-01-homepage-hero.png` | Homepage hero, $60.1K Pool NAV, Hedera Testnet pill |
 | 2 | `x402-permit-demo-402-response.png` | Raw JSON 402 response with permit-2612 scheme |
 | 3 | `demo-03-terminal-paid-call.png` | Clean terminal render of the paid-call script output |
-| 4 | `demo-04-studio-playground.png` | GraphiQL with the executed query — real Sepolia data + IPFS hash |
+| 4 | `demo-04-studio-playground.png` | GraphiQL with the executed query — real Sepolia data ($1,985 TVL, sepolia network) |
+| 4b | `demo-08-hedera-apollo-sandbox.png` | Apollo Sandbox → our Hedera adapter with the SAME query — real Hedera data ($60,070 TVL, hedera-testnet). Side-by-side with #4 = the parity proof shot. |
 | 5 | `demo-05-multichain-panel-1440.png` | Dashboard Multi-chain panel: both backends live |
 | 6 | `demo-06-privy-modal.png` | Privy sign-in sheet: email / Google / wallet |
-| 7 | `demo-07-judges-live.png` | `/judges` page: 11/11 green + first checks visible |
+| 7 | `demo-07-judges-live.png` | `/judges` page: 13/13 green + first checks visible + dual-playground section |
 
 ### On-chain proof (if judge asks "prove it")
 
