@@ -249,12 +249,16 @@ export default function DashboardPage() {
   const suiBalance = sui.balance;
 
   // Primary display address — SUI wins if connected (SUI-native pages),
-  // otherwise the unified Privy/wagmi session.
-  const isConnected = suiConnected || session.authenticated || !!evmAddress;
-  const address = suiAddress || session.address || evmAddress?.toString();
+  // otherwise the unified Privy session. Deliberately does NOT fall back
+  // to wagmi's evmAddress: injected wallets (MetaMask, OKX, Rabby via
+  // EIP-6963) auto-connect on page load even when the user hasn't
+  // clicked Sign In, causing a phantom "connected" address in the
+  // sidebar. Sidebar identity requires an EXPLICIT sign-in (SUI or Privy).
+  const isConnected = suiConnected || session.authenticated;
+  const address = suiAddress || session.address || '';
   const displayBalance = suiConnected
     ? `${suiBalance} SUI`
-    : session.balances.ready
+    : session.authenticated && session.balances.ready
       ? `${session.balances.hbarHuman.toFixed(4)} HBAR`
       : '';
 
