@@ -1,17 +1,21 @@
 /**
- * QStash Cron Job: Master Orchestrator
- * 
- * Chains ALL cron tasks in a single invocation:
- * 
- * 1. Community Pool snapshot & AI management (EVM)
- * 2. SUI Community Pool AI management (USDC, 4-asset)
- * 3. Pool NAV monitoring & drawdown alerts
- * 4. Auto-rebalance & loss protection
- * 5. Hedge position monitoring (stop-loss, take-profit, trailing stops)
- * 6. Liquidation guard for leveraged positions
- * 
- * Schedule: Every 5 minutes via Upstash QStash
- * 
+ * QStash Cron Job: Master Orchestrator (SOLE QStash schedule as of 2026-09-12)
+ *
+ * Fires every 5 minutes via QStash → fans out to all sub-cron routes in
+ * parallel. Each sub-cron internally gates cadence via tryClaimCronRun,
+ * so a 15-min job that gets pinged every 5 min just no-ops until its
+ * interval elapses.
+ *
+ * Why: QStash free tier is 1000 messages/day. 10 individual schedules were
+ * consuming ~1800/day and hit the ceiling, silently stopping all crons.
+ * Consolidating to ONE schedule → 288 messages/day, well under the limit.
+ *
+ * Trade-off vs 10 schedules:
+ *   - Lost per-cron QStash retries (QStash retries the master, not individual
+ *     sub-crons). Mitigated by each sub-cron's own internal tryClaimCronRun.
+ *   - Single point of failure — if master times out (>300s Vercel cap), all
+ *     sub-crons miss. Mitigated by parallel exec + per-sub-cron timeouts.
+ *
  * Security: Verified by QStash signature or CRON_SECRET for internal calls
  */
 
@@ -43,22 +47,28 @@ interface MasterCronResult {
 }
 
 /**
- * Call a sub-cron endpoint and capture result
+ * Base URL for sub-cron fetches. Vercel's own deployment URL avoids the
+ * DNS/edge round-trip through the public domain and works even if the
+ * custom domain has a temporary issue.
  */
-async function runSubCron(name: string, path: string, cronSecret: string): Promise<SubCronResult> {
+function subCronBaseUrl(): string {
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.VERCEL) return 'https://www.zkward.com';
+  return process.env.NEXTAUTH_URL || 'http://localhost:3000';
+}
+
+/**
+ * Call a sub-cron endpoint and capture result. Each sub-cron has its own
+ * timeout — a hang in one doesn't block the rest.
+ */
+async function runSubCron(name: string, path: string, cronSecret: string, timeoutMs = 25_000): Promise<SubCronResult> {
   const start = Date.now();
-  
+  const url = `${subCronBaseUrl()}${path}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const baseUrl = process.env.VERCEL 
-      ? 'https://zkward.com' 
-      : process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    
-    const url = `${baseUrl}${path}`;
-    logger.info(`[MasterCron] Running: ${name} → ${path}`);
-    
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout per sub-task
-    
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -67,24 +77,23 @@ async function runSubCron(name: string, path: string, cronSecret: string): Promi
       },
       signal: controller.signal,
     });
-    
-    clearTimeout(timeout);
-    
+
     const data = await response.json().catch(() => ({ status: response.status }));
     const duration = Date.now() - start;
-    
+
     if (response.ok) {
-      logger.info(`[MasterCron] ✅ ${name} completed in ${duration}ms`);
       return { name, success: true, duration, data };
     } else {
-      logger.warn(`[MasterCron] ⚠️ ${name} returned ${response.status} in ${duration}ms`);
+      logger.warn(`[MasterCron] ${name} returned ${response.status} in ${duration}ms`);
       return { name, success: false, duration, error: `HTTP ${response.status}`, data };
     }
   } catch (error: unknown) {
     const duration = Date.now() - start;
-    const errorMsg = errName(error) === 'AbortError' ? 'Timeout (25s)' : errMsg(error);
-    logger.error(`[MasterCron] ❌ ${name} failed in ${duration}ms: ${errorMsg}`);
+    const errorMsg = errName(error) === 'AbortError' ? `Timeout (${timeoutMs}ms)` : errMsg(error);
+    logger.error(`[MasterCron] ${name} failed in ${duration}ms: ${errorMsg}`);
     return { name, success: false, duration, error: errorMsg };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -116,51 +125,39 @@ export async function GET(request: NextRequest): Promise<NextResponse<MasterCron
   logger.info('[MasterCron] Starting master cron orchestration');
   logger.info('[MasterCron] ═══════════════════════════════════════');
   
-  // Run all sub-crons sequentially (order matters — snapshot before monitor before hedge)
-  const subTasks: SubCronResult[] = [];
-  
-  // Hourly counter (UTC) — used to gate cadence-controlled sub-crons.
-  // Master runs every 5 min, so most sub-crons run every tick. The hedge-state
-  // reconcile + fee-collection paths are daily/hourly; we gate them here so a
-  // QStash retry storm cannot accidentally collect-fees 12× in an hour.
-  const now = new Date();
-  const utcMinute = now.getUTCMinutes();
-  const utcHour = now.getUTCHours();
-  const isTopOfHour = utcMinute < 5;       // first tick each UTC hour
-  const isDailyHeartbeat = utcHour === 3 && utcMinute < 5; // ~03:05 UTC daily
+  // Master fires every */5 via QStash. Sub-crons all have their own
+  // tryClaimCronRun(intervalMs) internally, so calling every 5min is safe
+  // for a */15 cron — it no-ops until its interval elapses.
+  //
+  // This 1-master-schedule pattern was adopted 2026-09-12 when the previous
+  // 10-schedule fan-out hit QStash's 1000/day free-tier quota. Master
+  // consolidates to ~288 messages/day (12/hour × 24) with headroom to spare.
 
-  const cronJobs: Array<{ name: string; path: string }> = [
-    { name: 'Pyth Price Update',      path: '/api/cron/pyth-update' },        // Update oracle prices first
-    { name: 'BlueFin Health Monitor',  path: '/api/cron/bluefin-health' },     // Counter-party / venue distress probe (every 5m)
-    { name: 'Community Pool Snapshot', path: '/api/cron/community-pool' },
-    { name: 'SUI Community Pool',      path: '/api/cron/sui-community-pool' },
-    { name: 'Hedera Community Pool',   path: '/api/cron/hedera-community-pool' },
-    { name: 'Pool NAV Monitor',       path: '/api/cron/pool-nav-monitor' },
-    { name: 'Auto Rebalance',         path: '/api/cron/auto-rebalance' },
-    { name: 'Hedge Monitor',          path: '/api/cron/hedge-monitor' },
-    { name: 'Liquidation Guard',      path: '/api/cron/liquidation-guard' },
-    { name: 'Polymarket Edge Trader', path: '/api/cron/polymarket-edge-trader' }, // 5-min binary signal → BTC perp
+  const cronJobs: Array<{ name: string; path: string; timeoutMs?: number }> = [
+    { name: 'BlueFin Health',           path: '/api/cron/bluefin-health' },
+    { name: 'Polymarket Edge Trader',   path: '/api/cron/polymarket-edge-trader' },
+    { name: 'Liquidation Guard',        path: '/api/cron/liquidation-guard' },
+    { name: 'Agent Signal Tick',        path: '/api/cron/agent-signal-tick' },
+    { name: 'Pool NAV Monitor',         path: '/api/cron/pool-nav-monitor' },
+    { name: 'BlueFin DB Reconcile',     path: '/api/cron/bluefin-db-reconcile' },
+    { name: 'Alert Response Loop',      path: '/api/cron/alert-response-loop' },
+    { name: 'SUI Community Pool',       path: '/api/cron/sui-community-pool', timeoutMs: 60_000 },
+    { name: 'SUI Hedge Reconcile',      path: '/api/cron/sui-hedge-reconcile' },
+    { name: 'SUI Collect Fees',         path: '/api/cron/sui-collect-fees' },
   ];
 
-  // Hourly: SUI on-chain hedge state ↔ live BlueFin reconciliation.
-  // Repairs drift caused by external liquidations / manual closes.
-  if (isTopOfHour) {
-    cronJobs.push({ name: 'SUI Hedge Reconcile', path: '/api/cron/sui-hedge-reconcile' });
-  }
-
-  // Daily: Move fee-collection heartbeat — rolls forward last_fee_collection
-  // so the on-chain `nav * bps * seconds` math cannot wrap u64 at scale.
-  if (isDailyHeartbeat) {
-    cronJobs.push({ name: 'SUI Collect Fees', path: '/api/cron/sui-collect-fees' });
-  }
-  
-  for (const job of cronJobs) {
-    const result = await runSubCron(job.name, job.path, cronSecret || '');
-    subTasks.push(result);
-    
-    // If a critical job fails, still continue to the next one
-    // (each sub-cron is independent enough to run even if a prior one failed)
-  }
+  // Run all sub-crons in parallel. Each has its own timeout; one hang
+  // doesn't block the others. Sequential was a 275s worst-case ceiling
+  // that risked hitting Vercel's 300s maxDuration.
+  logger.info(`[MasterCron] fanning out to ${cronJobs.length} sub-crons in parallel`);
+  const results = await Promise.allSettled(
+    cronJobs.map((job) => runSubCron(job.name, job.path, cronSecret || '', job.timeoutMs)),
+  );
+  const subTasks: SubCronResult[] = results.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { name: cronJobs[i].name, success: false, duration: 0, error: errMsg(r.reason) },
+  );
   
   const succeeded = subTasks.filter(t => t.success).length;
   const failed = subTasks.filter(t => !t.success).length;
