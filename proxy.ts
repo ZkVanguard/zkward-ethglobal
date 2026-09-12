@@ -31,7 +31,11 @@ const CORS_ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 function applyCors(response: NextResponse, allow: string | null): NextResponse {
   if (allow) {
     response.headers.set('Access-Control-Allow-Origin', allow);
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    // Credentials CANNOT be combined with wildcard origin per CORS spec.
+    // Public read surfaces don't need credentials anyway.
+    if (allow !== '*') {
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+    }
     response.headers.set('Vary', 'Origin');
   }
   return response;
@@ -146,17 +150,34 @@ export function proxy(request: NextRequest) {
   // FAST PATH: Skip i18n middleware entirely for API routes
   if (pathname.startsWith('/api')) {
     const origin = request.headers.get('origin');
-    const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : null;
+    // Public GraphQL surfaces (subgraph adapter + judges JSON) are read-only,
+    // no session cookies, no wallet-scoped writes → safe to allow any origin.
+    // Lets Apollo Sandbox, GraphQL Playground, Studio, and third-party agents
+    // hit them without an allowlist entry. Everything else stays strict.
+    const isPublicReadSurface =
+      pathname.startsWith('/api/subgraph/') || pathname === '/api/judges/status';
+    const allow = isPublicReadSurface
+      ? (origin || '*')
+      : (origin && ALLOWED_ORIGINS.has(origin) ? origin : null);
 
     // CORS preflight — respond before any other work
     if (request.method === 'OPTIONS') {
       const preflightHeaders = new Headers();
       if (allow) {
         preflightHeaders.set('Access-Control-Allow-Origin', allow);
-        preflightHeaders.set('Access-Control-Allow-Credentials', 'true');
+        if (allow !== '*') {
+          preflightHeaders.set('Access-Control-Allow-Credentials', 'true');
+        }
       }
       preflightHeaders.set('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
-      preflightHeaders.set('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+      // Echo requested headers for public read surfaces so Apollo Sandbox's
+      // apollo-require-preflight (or any other non-standard header) is honored
+      // without needing to hardcode every possible tool's header name.
+      const requestedHeaders = request.headers.get('access-control-request-headers');
+      preflightHeaders.set(
+        'Access-Control-Allow-Headers',
+        isPublicReadSurface && requestedHeaders ? requestedHeaders : CORS_ALLOW_HEADERS,
+      );
       preflightHeaders.set('Vary', 'Origin');
       return new NextResponse(null, { status: 204, headers: preflightHeaders });
     }
