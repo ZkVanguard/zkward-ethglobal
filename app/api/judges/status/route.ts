@@ -149,6 +149,183 @@ async function checkX402Paid(origin: string): Promise<CheckResult> {
   };
 }
 
+/**
+ * Prove x402 real settlement: run a FULL paid handshake against
+ * /api/x402/permit-demo with a real EIP-2612 signed permit and assert
+ * verification.mode === 'zkward-eip2612' (NOT stub). Ephemeral wallet,
+ * server-side ethers signing — nothing to fake. HCS receipt anchors
+ * the response independently.
+ */
+async function checkX402RealPaid(origin: string): Promise<CheckResult> {
+  const t = await timed(async () => {
+    const { Wallet, TypedDataEncoder, Signature } = await import('ethers');
+
+    // 1. Fetch 402 intent
+    const r1 = await fetch(`${origin}/api/x402/permit-demo?asset=BTC`);
+    if (r1.status !== 402) throw new Error(`expected 402, got ${r1.status}`);
+    const intent = (await r1.json()) as {
+      accepts: Array<{
+        asset: string;
+        payTo: string;
+        maxAmountRequired: string;
+        extra: { chainId: number; tokenName: string; tokenVersion: string };
+      }>;
+    };
+    const req = intent.accepts[0];
+    if (!req?.asset || !req?.payTo) throw new Error('invalid intent shape');
+
+    // 2. Sign an EIP-2612 permit with an ephemeral wallet — no on-chain
+    //    nonce read: unfaucetted addresses have nonce 0 by definition.
+    const wallet = Wallet.createRandom();
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+    const domain = {
+      name: req.extra.tokenName,
+      version: req.extra.tokenVersion,
+      chainId: req.extra.chainId,
+      verifyingContract: req.asset,
+    };
+    const types = {
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    };
+    const message = {
+      owner: wallet.address,
+      spender: req.payTo,
+      value: req.maxAmountRequired,
+      nonce: 0n,
+      deadline: BigInt(deadline),
+    };
+    const signature = await wallet.signTypedData(domain, types, message);
+    const sig = Signature.from(signature);
+    // Sanity — local recovery must match signer
+    const digest = TypedDataEncoder.hash(domain, types, message);
+    const { recoverAddress } = await import('ethers');
+    if (recoverAddress(digest, sig).toLowerCase() !== wallet.address.toLowerCase()) {
+      throw new Error('local recovery mismatch — signing broken');
+    }
+
+    // 3. Replay with X-PAYMENT
+    const payload = {
+      owner: wallet.address,
+      spender: req.payTo,
+      value: req.maxAmountRequired,
+      nonce: '0',
+      deadline,
+      v: sig.v,
+      r: sig.r,
+      s: sig.s,
+    };
+    const xPayment = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const r2 = await fetch(`${origin}/api/x402/permit-demo?asset=BTC`, {
+      headers: { 'X-PAYMENT': xPayment },
+    });
+    if (r2.status !== 200) throw new Error(`paid call got ${r2.status}, expected 200`);
+    const j = (await r2.json()) as {
+      verification?: { valid?: boolean; mode?: string; recovered?: string };
+      hcs?: { txId?: string; error?: string };
+      signal?: string;
+    };
+    if (j.verification?.mode !== 'zkward-eip2612') throw new Error(`mode was ${j.verification?.mode}, expected zkward-eip2612`);
+    if (j.verification?.valid !== true) throw new Error('verification.valid was not true');
+    if (j.verification?.recovered?.toLowerCase() !== wallet.address.toLowerCase()) {
+      throw new Error('server-recovered signer does not match ephemeral wallet');
+    }
+    return { hcsTxId: j.hcs?.txId, signer: wallet.address, signal: j.signal };
+  });
+  return {
+    id: 'x402-real-paid',
+    label: 'x402 real settlement — EIP-2612 permit verified server-side',
+    ok: !!t.value,
+    detail: t.value
+      ? `verified signer ${t.value.signer.slice(0, 10)}…, signal ${t.value.signal}, HCS ${t.value.hcsTxId ? 'anchored' : 'skipped'}`
+      : t.error ?? 'unknown',
+    evidence: t.value?.hcsTxId,
+    link: t.value?.hcsTxId ? `https://hashscan.io/testnet/transaction/${t.value.hcsTxId}` : undefined,
+    latencyMs: t.latencyMs,
+  };
+}
+
+/**
+ * Prove the x402 verifier ACTUALLY verifies — not a rubber-stamp.
+ * Sends an X-PAYMENT where the declared `owner` differs from the
+ * signer of the permit. Server must recover the signature, notice
+ * the mismatch, and return 402 with verification.valid === false.
+ * If the endpoint returned 200 here, verification would be a lie.
+ */
+async function checkX402RejectsInvalid(origin: string): Promise<CheckResult> {
+  const t = await timed(async () => {
+    const { Wallet, Signature } = await import('ethers');
+    // Sign with wallet A but claim to be wallet B — a valid permit
+    // for a DIFFERENT owner. Verifier must catch the recover mismatch.
+    const walletA = Wallet.createRandom();
+    const walletB = Wallet.createRandom();
+    const r1 = await fetch(`${origin}/api/x402/permit-demo?asset=BTC`);
+    const intent = (await r1.json()) as {
+      accepts: Array<{
+        asset: string;
+        payTo: string;
+        maxAmountRequired: string;
+        extra: { chainId: number; tokenName: string; tokenVersion: string };
+      }>;
+    };
+    const req = intent.accepts[0];
+    const domain = {
+      name: req.extra.tokenName,
+      version: req.extra.tokenVersion,
+      chainId: req.extra.chainId,
+      verifyingContract: req.asset,
+    };
+    const types = {
+      Permit: [
+        { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    };
+    // Sign for walletA
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+    const message = {
+      owner: walletA.address,
+      spender: req.payTo,
+      value: req.maxAmountRequired,
+      nonce: 0n,
+      deadline: BigInt(deadline),
+    };
+    const signature = await walletA.signTypedData(domain, types, message);
+    const sig = Signature.from(signature);
+    // ...but declare walletB as owner in the payload — mismatch.
+    const payload = {
+      owner: walletB.address, // ← tampered
+      spender: req.payTo,
+      value: req.maxAmountRequired,
+      nonce: '0',
+      deadline,
+      v: sig.v, r: sig.r, s: sig.s,
+    };
+    const xPayment = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const r2 = await fetch(`${origin}/api/x402/permit-demo?asset=BTC`, {
+      headers: { 'X-PAYMENT': xPayment },
+    });
+    if (r2.status !== 402) throw new Error(`tampered payload got HTTP ${r2.status}, expected 402 rejection`);
+    const j = (await r2.json()) as { verification?: { valid?: boolean; mode?: string; note?: string } };
+    if (j.verification?.valid !== false) throw new Error(`verification.valid was ${j.verification?.valid}, expected false`);
+    return { note: j.verification?.note ?? 'rejected' };
+  });
+  return {
+    id: 'x402-rejects-invalid',
+    label: 'x402 verifier rejects tampered signatures (not a rubber-stamp)',
+    ok: !!t.value,
+    detail: t.value ? `rejected: ${t.value.note?.slice(0, 100)}` : t.error ?? 'unknown',
+    link: `${origin}/api/x402/permit-demo?asset=BTC`,
+    latencyMs: t.latencyMs,
+  };
+}
+
 async function checkA2A(origin: string): Promise<CheckResult> {
   const t = await timed(async () => {
     const r = await fetch(`${origin}/api/hedera/a2a/demo?asset=BTC&budget=500`);
@@ -293,6 +470,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     checkRegistry(),
     checkX402Intent(origin),
     checkX402Paid(origin),
+    checkX402RealPaid(origin),
+    checkX402RejectsInvalid(origin),
     checkA2A(origin),
     checkAdapterHealth(origin),
     checkVerifiableGraphQL(origin),
