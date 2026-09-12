@@ -18,14 +18,21 @@ import { getChainConfig, POOL_ABI } from './chain-config';
 import { dedupedFetch, getCachedRpc, setCachedRpc, POOL_DATA_TTL, USER_POSITION_TTL, LEADERBOARD_TTL } from './cache';
 
 /**
- * Create a JSON response with CDN cache headers for Vercel Edge Cache
- * s-maxage: CDN caches for specified seconds
- * stale-while-revalidate: serves stale while fetching fresh in background
+ * Create a JSON response with CDN cache headers for Vercel Edge Cache.
+ *
+ *   public       — required by Vercel to enable edge caching. Without
+ *                  this prefix Vercel serves as if no-store.
+ *   s-maxage     — CDN caches for N seconds (shared cache)
+ *   stale-while-revalidate — serves stale while fetching fresh in background
+ *
+ * Confirmed empirically 2026-09-12: previous shipped version omitted
+ * `public,` and Vercel returned every request with `max-age=0,
+ * must-revalidate` (no CDN hit). Adding it enables real edge caching.
  */
 export function cachedJsonResponse(data: unknown, cdnTtlSeconds: number = 30) {
   return NextResponse.json(data, {
     headers: {
-      'Cache-Control': `s-maxage=${cdnTtlSeconds}, stale-while-revalidate=${cdnTtlSeconds * 2}`,
+      'Cache-Control': `public, s-maxage=${cdnTtlSeconds}, stale-while-revalidate=${cdnTtlSeconds * 2}`,
     },
   });
 }

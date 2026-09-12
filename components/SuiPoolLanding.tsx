@@ -4,6 +4,7 @@ import type { RefObject } from 'react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@/i18n/routing';
+import { useHederaPool, type HederaPoolResponse } from '@/lib/hooks/useHederaPool';
 import {
   ArrowRight, ShieldCheck, Zap, BarChart3,
   Sparkles, Layers, Lock,
@@ -86,26 +87,27 @@ const TVL_CAP_USD = 100_000;
 // Everything is real chain data via Mirror Node — same endpoints the
 // dashboard uses.
 function HederaVaultCallout() {
-  const { data } = useQuery({
-    queryKey: ['landing-hedera-pool'],
+  // Pool summary reads from the shared useHederaPool hook so this
+  // callout dedupes with the hero's fetchPoolSummary + the dashboard's
+  // useCommunityPool. History stays as its own fetch (different endpoint).
+  const { data: pool } = useHederaPool('testnet');
+  const { data: hist } = useQuery({
+    queryKey: ['hedera-nav-history', 'all'],
     queryFn: async () => {
-      const [poolRes, histRes] = await Promise.all([
-        fetch('/api/community-pool?chain=hedera&network=testnet', { cache: 'no-store' }),
-        fetch('/api/hedera/nav-history?window=all', { cache: 'no-store' }),
-      ]);
-      const pool = await poolRes.json();
-      const hist = await histRes.json();
-      return {
-        tvl: Number(pool?.pool?.totalValueUSD) || 0,
-        sharePrice: Number(pool?.pool?.sharePrice) || 1,
-        memberCount: Number(pool?.pool?.memberCount) || 0,
-        points: (hist?.points as Array<{ t: string; sharePrice: number }> | undefined) ?? [],
-      };
+      const r = await fetch('/api/hedera/nav-history?window=all', { cache: 'no-store' });
+      return r.ok ? (await r.json()) as { points?: Array<{ t: string; sharePrice: number }> } : { points: [] };
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
 
+  if (!pool?.pool && !hist) return null;
+  const data = {
+    tvl: Number(pool?.pool?.totalValueUSD) || 0,
+    sharePrice: Number(pool?.pool?.sharePrice) || 1,
+    memberCount: Number(pool?.pool?.memberCount) || 0,
+    points: hist?.points ?? [],
+  };
   if (!data) return null;
   const { tvl, sharePrice, memberCount, points } = data;
 
@@ -243,15 +245,9 @@ function formatCount(n: number, singular: string, plural: string): string {
   return `${rounded} ${rounded === 1 ? singular : plural}`;
 }
 
-async function fetchPoolSummary(): Promise<PoolSummary | null> {
-  // Homepage highlights the HEDERA vault (ETHGlobal prize surface). SUI
-  // mainnet pool is $60 and boring; Hedera vault is $60k+ post-seed and
-  // is what judges evaluate. Same PoolSummary contract, different backend.
-  const res = await fetch('/api/community-pool?chain=hedera&network=testnet', {
-    cache: 'no-store',
-  });
-  const j = await res.json();
-  const p = j?.pool;
+/** Map the shared Hedera pool response into the local PoolSummary shape. */
+function toPoolSummary(res: HederaPoolResponse | undefined): PoolSummary | null {
+  const p = res?.pool;
   if (!p) return null;
   return {
     totalNAV: Number(p.totalValueUSD ?? 0),
@@ -576,12 +572,10 @@ function HeroGraphBg() {
 }
 
 export const SuiPoolLanding = memo(function SuiPoolLanding() {
-  const { data: pool, isPending: loading, dataUpdatedAt } = useQuery({
-    queryKey: ['sui-pool-landing'],
-    queryFn: fetchPoolSummary,
-    refetchInterval: 30_000,
-    staleTime: 30_000,
-  });
+  // Read the shared Hedera pool query — same cache key as HederaVaultCallout
+  // above + the dashboard's useCommunityPool. Three consumers, one fetch.
+  const { data: rawPool, isPending: loading, dataUpdatedAt } = useHederaPool('testnet');
+  const pool = toPoolSummary(rawPool);
 
   // Hero ref kept for structural anchor; cursor-follow effects removed
   // per design request.
