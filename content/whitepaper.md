@@ -137,10 +137,12 @@ The stack has four horizontal layers. Every capital-touching action flows throug
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       BLOCKCHAIN LAYER                          │
+│  Hedera Testnet — SimpleUsdcVaultV2 (primary vault, $60k TVL)   │
+│  + HCS audit topic + Mirror Node GraphQL adapter (npm-published)│
 │  SUI Mainnet — Move contracts (USDC Community Pool v0.2.0,      │
 │  ZK verifier, ZK Proxy Vault, Hedge Executor)                   │
-│  Secondary: Cronos EVM, Oasis Sapphire, Arbitrum Sepolia,       │
-│  Hedera testnet (multichain capability, SUI is lead)            │
+│  Sepolia — SimpleUsdcVault (Graph Studio subgraph indexed)      │
+│  Historical: Cronos EVM, Oasis Sapphire, Arbitrum (research)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
