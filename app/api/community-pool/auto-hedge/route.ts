@@ -321,7 +321,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const autoHedgeCache = autoHedgeCacheByChain.get(chain);
   if (autoHedgeCache && Date.now() < autoHedgeCache.expiresAt) {
     return NextResponse.json(autoHedgeCache.data, {
-      headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=60' },
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
     });
   }
 
@@ -612,7 +612,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(responseData, {
       headers:
         status.activeHedges.length > 0
-          ? { 'Cache-Control': 's-maxage=30, stale-while-revalidate=60' }
+          ? { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' }
           : { 'Cache-Control': 'no-store' },
     });
   } catch (error) {

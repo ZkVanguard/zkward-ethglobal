@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { logger } from '@/lib/utils/logger';
 import { getCronosProvider, getCronosRpcUrl } from '@/lib/throttled-provider';
 import { safeErrorResponse } from '@/lib/security/safe-error';
+import { mutationLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,9 @@ const X402_VERIFIER_ABI = [
 ];
 
 export async function POST(request: NextRequest) {
+  const limited = mutationLimiter.check(request);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { proofHash, merkleRoot, securityLevel } = body;

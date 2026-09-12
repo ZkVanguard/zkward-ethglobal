@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
@@ -69,6 +70,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ chain: string }> }
 ) {
+  // Without a limit, this proxy becomes free RPC — burns upstream
+  // provider allowances (drpc.org, Ankr, publicnode) for arbitrary
+  // clients. readLimiter = 120/min/IP matches normal wallet activity.
+  const limited = readLimiter.check(request);
+  if (limited) return limited;
+
   const { chain } = await params;
 
   if (!ALLOWED_CHAINS.has(chain)) {

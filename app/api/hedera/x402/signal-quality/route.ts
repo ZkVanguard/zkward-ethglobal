@@ -34,6 +34,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { envFlag } from '@/lib/utils/env-flag';
+import { createRateLimiter } from '@/lib/security/rate-limiter';
+
+// 30/min/IP — payment flow: unpaid 402 responses are cheap, but each settled
+// call runs signal inference + writes to HCS. Prevents an attacker from
+// flooding the facilitator with junk X-PAYMENT headers to force verify RTTs.
+const x402Limiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000, prefix: 'rl:x402-signal' });
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -434,6 +440,9 @@ async function writeHcsAudit(payload: {
 // ─── Handler ───────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest): Promise<NextResponse<SignalQualityResponse | { error: string; intent?: X402PaymentIntent }>> {
+  const limited = x402Limiter.check(request);
+  if (limited) return limited as NextResponse<{ error: string }>;
+
   const url = new URL(request.url);
   const asset = (url.searchParams.get('asset') || 'BTC').toUpperCase();
   if (!['BTC', 'ETH', 'SUI', 'CRO'].includes(asset)) {
