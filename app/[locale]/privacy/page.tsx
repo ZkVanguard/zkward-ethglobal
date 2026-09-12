@@ -78,11 +78,13 @@ export default function PrivacyPage() {
             <h2 className="text-2xl font-semibold mb-4 text-[#1D1D1F]">6. Third-Party Services</h2>
             <p>We integrate with:</p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
+              <li><strong>Privy:</strong> Passwordless sign-in + embedded wallet provisioning</li>
               <li><strong>WalletConnect/Reown:</strong> For secure wallet connections</li>
-              <li><strong>Cronos Network:</strong> For blockchain interactions</li>
+              <li><strong>Hedera Network:</strong> For primary vault + Hedera Consensus Service audit trail</li>
               <li><strong>SUI Network:</strong> For multi-chain functionality</li>
+              <li><strong>The Graph (Studio):</strong> Sepolia subgraph indexer for cross-chain schema demonstration</li>
               <li><strong>Crypto.com AI SDK:</strong> For portfolio analysis (optional)</li>
-              <li><strong>Neon Database:</strong> For anonymized analytics storage</li>
+              <li><strong>Aiven PostgreSQL:</strong> For anonymized analytics storage</li>
             </ul>
             <p className="mt-2 text-sm text-[#6E6E73]">
               Each third-party service has its own privacy policy. We only share the minimum data necessary for functionality.

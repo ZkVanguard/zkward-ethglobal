@@ -16,8 +16,9 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#1D1D1F]">2. Description of Service</h2>
             <p>
-              ZkVanguard is a decentralized portfolio management platform that uses AI agents and zero-knowledge
-              proofs to provide privacy-preserving financial services on the Cronos blockchain.
+              ZkWard is a multi-chain AI-managed vault platform that uses seven autonomous agents and
+              zero-knowledge proofs to provide privacy-preserving financial services on Hedera
+              (primary) and SUI (secondary) networks.
             </p>
           </section>
 
@@ -63,7 +64,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#1D1D1F]">6. Smart Contract Risks</h2>
             <p>
-              ZkVanguard operates through smart contracts on the Cronos blockchain. While our contracts have been
+              ZkWard operates through smart contracts on Hedera and SUI networks. While our contracts have been
               tested, users acknowledge that:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-2">

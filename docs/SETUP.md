@@ -1,379 +1,135 @@
-# ZkWard - Setup & Quick Start Guide
+# ZkWard — Setup & Quick Start
 
-## Prerequisites
+This guide covers **local development** and the fastest way to interact with the live product.
+For architecture + deep-dive docs, see `ARCHITECTURE.md`. For the demo flow, see `../demo/README.md`.
 
-Before starting, ensure you have:
+## Just want to try the product?
 
-- **Node.js** v18 or higher ([download](https://nodejs.org/))
-- **npm** or **yarn** package manager
-- **Git** for version control
-- **MetaMask** or **Rabby** wallet browser extension
-- **Cronos Testnet TCRO** from the [faucet](https://cronos.org/faucet)
+**No setup needed.** The whole platform is live:
 
-## Installation
+- App: <https://www.zkward.com>
+- Live judge dashboard: <https://www.zkward.com/judges>
+- Public GraphQL playground (Sepolia subgraph): <https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0/graphql>
 
-### 1. Clone and Install Dependencies
-
-```bash
-# Clone the repository
-git clone https://github.com/ZkVanguard/ZkVanguard.git
-cd ZkVanguard
-
-# Install all dependencies
-npm install
-
-# This will install dependencies for all workspaces:
-# - Root project
-# - Agents
-# - Integrations
-# - Simulator
-# - Frontend
-```
-
-### 2. Environment Setup
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your values
-# Required for basic testing:
-# - PRIVATE_KEY (your wallet private key)
-# - CRONOS_TESTNET_RPC (default provided)
-```
-
-**Important**: Never commit your `.env` file or share your private keys!
-
-### 3. Configure MetaMask for Cronos Testnet
-
-Add Cronos Testnet to MetaMask:
-
-- **Network Name**: Cronos Testnet
-- **RPC URL**: `https://evm-t3.cronos.org/`
-- **Chain ID**: `338`
-- **Currency Symbol**: `TCRO`
-- **Block Explorer**: `https://explorer.cronos.org/testnet/`
-
-Get test TCRO from the [faucet](https://cronos.org/faucet).
-
-## Project Structure Overview
-
-```
-ZkVanguard/
-├── contracts/          # Solidity smart contracts
-│   ├── core/          # Core contracts (RWAManager, PaymentRouter)
-│   ├── verifiers/     # ZK verification contracts
-│   └── integrations/  # dApp adapter contracts
-├── agents/            # AI agent system
-│   ├── core/          # Base agent & orchestration
-│   ├── specialized/   # Specialized agents (Risk, Hedging, etc.)
-│   └── communication/ # Inter-agent messaging
-├── integrations/      # External service integrations
-│   ├── mcp/           # MCP Server client
-│   ├── x402/          # x402 payment integration
-│   ├── cryptocom/     # Crypto.com SDK wrapper
-│   └── dapps/         # VVS, Moonlander, Delphi clients
-├── zk/                # ZK proof circuits and generators
-├── simulator/         # Dev simulator dashboard
-│   ├── backend/       # API and virtualizer
-│   └── frontend/      # React dashboard
-├── frontend/          # Main user interface
-├── shared/            # Shared utilities and types
-├── scripts/           # Deployment and utility scripts
-└── test/              # Test suites
-```
-
-## Quick Start
-
-### Step 1: Compile Smart Contracts
-
-```bash
-npm run compile
-```
-
-This compiles all Solidity contracts and generates TypeScript typings.
-
-### Step 2: Run Tests
-
-```bash
-# Run all tests
-npm test
-
-# Or run specific test suites:
-npm run test:contracts    # Smart contract tests
-npm run test:agents       # Agent system tests
-npm run test:integration  # Integration tests
-```
-
-### Step 3: Deploy to Cronos Testnet
-
-```bash
-# Make sure you have TCRO in your wallet
-npm run deploy:testnet
-```
-
-This will:
-1. Deploy all smart contracts to Cronos Testnet
-2. Initialize contracts with proper roles
-3. Save contract addresses to `deployments/cronos-testnet/addresses.json`
-
-**Expected output:**
-```
-=== Deployment Summary ===
-Network: cronos-testnet (Chain ID: 338)
-Deployer: 0x...
-
-Contract Addresses:
-  RWAManager: 0x...
-  PaymentRouter: 0x...
-  ZKVerifier: 0x...
-```
-
-### Step 4: Verify Contracts (Optional)
-
-```bash
-npm run verify:testnet
-```
-
-This verifies your contracts on Cronoscan for transparency.
-
-### Step 5: Start the System
-
-#### Option A: Run Everything (Recommended for Testing)
-
-```bash
-npm run dev
-```
-
-This starts:
-- AI Agent Orchestrator (port 3000)
-- Simulator Dashboard (port 3001)
-- Frontend UI (port 5173)
-
-#### Option B: Run Components Separately
-
-```bash
-# Terminal 1: Start agents
-npm run agents:dev
-
-# Terminal 2: Start simulator
-npm run simulator:dev
-
-# Terminal 3: Start frontend
-npm run frontend:dev
-```
-
-### Step 6: Access the Interfaces
-
-- **Main UI**: http://localhost:5173
-- **Simulator Dashboard**: http://localhost:3001
-- **Agent API**: http://localhost:3000
-
-## Usage Example
-
-### 1. Create a Portfolio
-
-Using the frontend UI or directly via contracts:
-
-```typescript
-// Via ethers.js
-const rwaManager = await ethers.getContractAt('RWAManager', rwaManagerAddress);
-const tx = await rwaManager.createPortfolio(
-  800,  // 8% target yield
-  60    // 60/100 risk tolerance
-);
-await tx.wait();
-```
-
-### 2. Submit a Strategy (Natural Language)
-
-In the frontend chat interface:
-
-```
-"Hedge $10M RWA portfolio against volatility with 8% yield target"
-```
-
-The Lead Agent will:
-1. Parse the natural language
-2. Delegate to specialized agents
-3. Execute hedging strategy
-4. Generate ZK proof
-5. Display results
-
-### 3. Monitor in Simulator
-
-The simulator dashboard shows:
-- Real-time agent communication
-- Task execution traces
-- Performance metrics
-- Debug logs
-
-## Development Workflow
-
-### Making Changes to Contracts
-
-```bash
-# 1. Edit contracts in contracts/
-# 2. Compile
-npm run compile
-
-# 3. Run tests
-npm run test:contracts
-
-# 4. Deploy to local network for testing
-npx hardhat node  # Terminal 1
-npm run deploy:testnet  # Terminal 2 (use --network hardhat)
-```
-
-### Developing Agents
-
-```bash
-# 1. Edit agents in agents/
-# 2. Run in dev mode (auto-reload)
-npm run agents:dev
-
-# 3. Test specific agent
-npm run test:agents -- RiskAgent.test.ts
-```
-
-### Frontend Development
-
-```bash
-cd frontend
-npm run dev
-
-# Frontend will hot-reload on changes
-```
-
-## Testing Scenarios
-
-### Scenario 1: Basic Risk Analysis
-
-```bash
-# In simulator dashboard
-1. Go to "Scenario Simulator"
-2. Select "Market Crash Scenario"
-3. Click "Run Simulation"
-4. Observe agent swarm behavior
-```
-
-### Scenario 2: End-to-End Hedging
-
-```bash
-# Run E2E test
-npm run test:e2e -- hedge-strategy.spec.ts
-```
-
-## Troubleshooting
-
-### Issue: "Insufficient funds for gas"
-
-**Solution**: Get more TCRO from the [faucet](https://cronos.org/faucet)
-
-### Issue: "Network connection failed"
-
-**Solution**: Check your RPC URL in `.env`:
-```bash
-CRONOS_TESTNET_RPC=https://evm-t3.cronos.org/
-```
-
-### Issue: "Contract deployment failed"
-
-**Solution**: 
-1. Check your gas settings in `hardhat.config.ts`
-2. Ensure you have enough TCRO
-3. Check network congestion
-
-### Issue: "Agent not responding"
-
-**Solution**:
-1. Check agent logs: `npm run logs:agents`
-2. Restart agents: `npm run agents:start`
-3. Check Redis connection (if using external Redis)
-
-### Issue: "Compilation errors"
-
-**Solution**:
-```bash
-# Clean and rebuild
-npm run clean
-npm install
-npm run compile
-```
-
-## Configuration
-
-### Agent Configuration
-
-Edit `config/agent.config.json`:
-
-```json
-{
-  "leadAgent": {
-    "model": "gpt-4",
-    "maxRetries": 3,
-    "timeout": 30000
-  },
-  "riskAgent": {
-    "dataSource": "mcp-server",
-    "refreshInterval": 10000
-  }
-}
-```
-
-### Network Configuration
-
-Edit `config/network.config.json` to add custom networks.
-
-## Advanced Features
-
-### Using the Simulator
-
-The simulator allows testing without real blockchain transactions:
-
-1. **Virtualized Data Feeds**: Create custom market scenarios
-2. **Swarm Testing**: Test multi-agent interactions
-3. **Performance Profiling**: Measure agent execution times
-4. **Scenario Replay**: Replay historical executions
-
-### ZK Proof Generation
-
-```bash
-# Compile ZK circuits
-npm run compile:circuits
-
-# This generates proving/verification keys
-```
-
-### Gasless Transactions (x402)
-
-In production, configure x402 Facilitator:
-
-```javascript
-// integrations/x402/X402Client.ts
-const x402Client = new X402Client({
-  apiKey: process.env.X402_API_KEY,
-  facilitatorUrl: process.env.X402_FACILITATOR_URL
-});
-```
-
-## Next Steps
-
-1. **Read the Architecture Guide**: [ARCHITECTURE.md](./ARCHITECTURE.md)
-2. **Explore Agent System**: [docs/AGENTS.md](./docs/AGENTS.md)
-3. **Understand ZK Proofs**: [docs/ZK_SYSTEM.md](./docs/ZK_SYSTEM.md)
-4. **Review API Documentation**: [docs/API.md](./docs/API.md)
-
-## Getting Help
-
-- **Issues**: https://github.com/ZkVanguard/ZkVanguard/issues
-- **Cronos Discord**: https://discord.gg/cronos
-- **Telegram**: https://t.me/cronoschain
-
-## License
-
-MIT License - see [LICENSE](./LICENSE) for details.
+Sign in with email or Google — Privy auto-provisions a Hedera-testnet embedded wallet. Use the in-app Faucet button to mint 100 test USDC, then deposit.
 
 ---
 
-**Ready to build?** Start with `npm run dev` and visit http://localhost:5173
+## Local development
+
+### Prerequisites
+
+- **Node.js** ≥ 20 (Next 16 requirement)
+- **bun** ≥ 1.1 — canonical package manager for this repo (`npm install --legacy-peer-deps` also works for Vercel install)
+- **git**
+- Optional: **Python 3.11** if you want to run the ZK-STARK prover locally (`zkp/`)
+
+### 1. Clone + install
+
+```bash
+git clone https://github.com/ZkVanguard/zkward-ethglobal
+cd zkward-ethglobal
+bun install
+```
+
+### 2. Environment
+
+Copy `.env.example` → `.env.local` and fill in the values you need. Minimum for local dev of the frontend:
+
+```bash
+# Read from any Hedera testnet RPC — no key needed
+NEXT_PUBLIC_HEDERA_NETWORK=testnet
+
+# Privy — sign up at https://dashboard.privy.io for a free App ID
+NEXT_PUBLIC_PRIVY_APP_ID=<your-privy-app-id>
+
+# Optional: pool DB (read-only surfaces work without it)
+POSTGRES_URL=<your-aiven-or-neon-postgres-url>
+```
+
+For write flows (deposit, admin routes, HCS attestation) you'll also need:
+
+```bash
+HEDERA_OPERATOR_ID=0.0.xxxxxx
+HEDERA_OPERATOR_KEY=<ECDSA-secp256k1-hex>
+CRON_SECRET=<any-strong-secret>       # gates /api/admin/* + cron routes
+```
+
+Full canonical env list is in `.env.example`.
+
+### 3. Run
+
+```bash
+bun run dev              # Next.js dev server on http://localhost:3000
+bun run typecheck        # must pass before commit
+bun run test             # jest full suite
+bun jest test/integration/pool-drawdown-defense.test.ts    # MUST stay green
+```
+
+---
+
+## Interacting with the live vault
+
+### Faucet a test wallet
+
+Any address can pull 100 test USDC + 1 HBAR from the built-in faucet:
+
+```bash
+curl -X POST https://www.zkward.com/api/hedera/faucet \
+  -H 'content-type: application/json' \
+  -d '{"address": "0xYOUR_HEDERA_EVM_ADDRESS"}'
+```
+
+### Run the real paid x402 call end-to-end
+
+```bash
+bun run scripts/demo-x402-permit.ts
+```
+
+Ephemeral wallet → faucet mint → EIP-2612 permit signature → 200 OK with `verification.mode: 'zkward-eip2612'` + HCS receipt.
+
+### Hedera GraphQL adapter (open-source npm)
+
+```bash
+npm install @zkward/hedera-graphql-adapter
+```
+
+```typescript
+import { createAdapter } from '@zkward/hedera-graphql-adapter';
+
+const adapter = createAdapter({ network: 'testnet' });
+const pools = await adapter.query('{ pools { id totalNav memberCount } }');
+```
+
+Serves the same schema on Hedera that Graph Studio serves on Sepolia — one query, two chains.
+
+---
+
+## Deployed contracts
+
+| Chain | Purpose | Address |
+|---|---|---|
+| Hedera Testnet (296) | Primary vault — SimpleUsdcVaultV2 | `0x18a8d89E3674EBCeC678f97A8a8b1D144b330b88` |
+| Hedera Testnet (296) | Test USDC (MockERC20Permit) | `0xe40AbC51A100Fa19B5CddEea637647008Eb0eA0b` |
+| Sepolia (11155111) | SimpleUsdcVault (for Graph indexing demo) | `0x68eee8378935a90343347f5e4438eaad4b53111b` |
+| SUI Mainnet | Community pool (v0.2.0) — package | `0x107292a69eea2f6eaf4a4e4727ee25d747b04c1985441b138933f0ef33f7b726` |
+
+HCS audit topic (Hedera Testnet): `0.0.10393879` — [browse on HashScan](https://hashscan.io/testnet/topic/0.0.10393879).
+
+---
+
+## Troubleshooting
+
+- **Vercel deploy fails on security scan** — the scan flags long minified lines; check `scripts/security-scan.cjs` output before deleting the offending file, most flags are safe to ignore for repo-internal builds.
+- **`bun install` peer-dep warning** — expected; wagmi + viem versions are tuned for stability. Use `npm install --legacy-peer-deps` if bun's resolution rejects.
+- **Hedera embedded wallet takes 2-5s** — normal on Google-first login. Dashboard shows "Creating your Hedera-testnet embedded wallet…" during the gap.
+- **Chart shows flat `$1.0000` share price** — by design. The Hedera vault uses ERC-4626-lite math (no on-chain yield accrual). Look at `Total NAV history` and the projected metrics for movement.
+
+---
+
+## Related docs
+
+- `ARCHITECTURE.md` — full system diagram
+- `../demo/README.md` — 3-min demo cheat sheet
+- `../CLAUDE.md` — repo guidance for Claude Code (personal, gitignored)
+- `SLO_AND_RUNBOOKS.md` — production runbooks

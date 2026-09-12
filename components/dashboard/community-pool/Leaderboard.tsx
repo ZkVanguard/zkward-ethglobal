@@ -36,7 +36,7 @@ const RANK_STYLES = [
 const POOL_PROXY_WALLETS: Record<string, { address: string; name: string }> = {
   sepolia: {
     address: '0x07d68C2828F35327d12a7Ba796cCF3f12F8A1086',
-    name: 'Pool Contract (WDK USDT)',
+    name: 'Pool Contract (USDT)',
   },
   cronos: {
     address: '0x7F75Ca65D32752607fF481F453E4fbD45E61FdFd',

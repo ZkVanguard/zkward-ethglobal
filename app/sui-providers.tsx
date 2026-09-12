@@ -156,8 +156,7 @@ function SuiContextProvider({
         const accountChains = account.chains || [];
         let detectedNetwork: string | null = null;
 
-        console.log('🔍 SUI account chains:', accountChains);
-        console.log('🔍 SUI app expected network:', network);
+        logger.debug('SUI account chains detected', { component: 'SuiProvider', data: { accountChains, expected: network } });
 
         for (const chain of accountChains) {
           if (chain.includes('mainnet')) {
@@ -176,7 +175,7 @@ function SuiContextProvider({
         if (!detectedNetwork && address) {
           try {
             const chainId = await suiClient.getChainIdentifier();
-            console.log('🔍 SUI chainId from RPC:', chainId);
+            logger.debug('SUI chainId from RPC', { component: 'SuiProvider', data: { chainId } });
             // Chain identifiers: mainnet = specific hash, testnet & devnet have their own
             // Use a simple heuristic based on common patterns
             if (chainId) {
@@ -199,20 +198,17 @@ function SuiContextProvider({
           }
         }
 
-        console.log('🔍 SUI detected wallet network:', detectedNetwork);
+        logger.debug('SUI detected wallet network', { component: 'SuiProvider', data: { detectedNetwork } });
         setWalletNetwork(detectedNetwork);
-        
-        // Check if wallet network matches app's expected network
+
         // If we can't detect wallet network, assume it's correct (don't block user)
         if (detectedNetwork && detectedNetwork !== network) {
-          console.log('⚠️ SUI network mismatch:', { wallet: detectedNetwork, app: network });
-          logger.warn('SUI wallet network mismatch', { 
-            component: 'SuiProvider', 
-            data: { walletNetwork: detectedNetwork, appNetwork: network } 
+          logger.warn('SUI wallet network mismatch', {
+            component: 'SuiProvider',
+            data: { walletNetwork: detectedNetwork, appNetwork: network },
           });
           setIsWrongNetwork(true);
         } else {
-          console.log('✅ SUI network OK or unknown (allowing)');
           setIsWrongNetwork(false);
         }
       } catch (error) {
