@@ -24,7 +24,10 @@ interface Status {
     vault: string;
     auditTopic: string;
     registryTopic: string;
-    studioSubgraph: string;
+    subgraphPlaygrounds: {
+      sepolia: { label: string; url: string };
+      hedera: { label: string; url: string };
+    };
     adapterPackage: string;
     pullRequests: Record<string, string>;
   };
@@ -145,6 +148,24 @@ export default function JudgesPage() {
                 </li>
               ))}
             </ol>
+
+            <section className="mt-10">
+              <h2 className="text-lg font-semibold mb-2">Explore the subgraph (same schema, two chains)</h2>
+              <p className="text-sm text-label-secondary mb-3">
+                The Graph doesn&apos;t index Hedera — that&apos;s the gap our{' '}
+                <code className="text-xs bg-system-bg-tertiary px-1 rounded">@zkward/hedera-graphql-adapter</code>{' '}
+                closes. Same query, either chain.
+              </p>
+              <ul className="space-y-2 text-sm">
+                {Object.entries(status.references.subgraphPlaygrounds).map(([k, p]) => (
+                  <li key={k}>
+                    <a href={p.url} target="_blank" rel="noreferrer" className="text-ios-blue hover:underline break-words">
+                      {p.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
             <section className="mt-10">
               <h2 className="text-lg font-semibold mb-3">Upstream PRs (open-source contributions)</h2>

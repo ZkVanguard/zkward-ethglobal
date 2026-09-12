@@ -24,13 +24,13 @@ const AUDIT_TOPIC = '0.0.10393879';
 const REGISTRY_TOPIC = '0.0.10401316';
 const NPM_PACKAGE = '@zkward/hedera-graphql-adapter';
 const STUDIO_ENDPOINT = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0';
-// Public playground URL — pre-populates a query showing _meta.deployment
-// (IPFS hash proof), pools with derived transactions, and members. Judges
-// click through to a page with the query loaded — press Play to run.
-// Alternative to thegraph.com/studio/subgraph/zkward (owner-only, 404s
-// for non-owners).
-const STUDIO_PLAYGROUND = `${STUDIO_ENDPOINT}/graphql?query=${encodeURIComponent(
-  `{
+// Same subgraph schema, TWO backends → judges can see identical queries
+// return data from two chains:
+//   1. Studio playground (Sepolia data — The Graph Protocol infra)
+//   2. Apollo Sandbox pointed at our Hedera adapter (Hedera data, same schema)
+// The Graph can't index Hedera — that's the gap the adapter closes. Surfacing
+// both endpoints proves schema parity: one query, either chain.
+const PARITY_QUERY = `{
   _meta { deployment block { number } hasIndexingErrors }
   pools { id network totalNav totalShares memberCount
     transactions(first: 5, orderBy: timestamp, orderDirection: desc) {
@@ -38,8 +38,11 @@ const STUDIO_PLAYGROUND = `${STUDIO_ENDPOINT}/graphql?query=${encodeURIComponent
     }
   }
   members { address currentShares totalDeposited }
-}`,
-)}`;
+}`;
+const SEPOLIA_PLAYGROUND = `${STUDIO_ENDPOINT}/graphql?query=${encodeURIComponent(PARITY_QUERY)}`;
+// Apollo Sandbox reads endpoint from query param; our adapter's CORS is
+// permissive so the browser can call it directly. Same query as above.
+const HEDERA_PLAYGROUND = `https://studio.apollographql.com/sandbox/explorer?endpoint=${encodeURIComponent('https://www.zkward.com/api/subgraph/hedera')}&document=${encodeURIComponent(PARITY_QUERY)}`;
 
 interface CheckResult {
   id: string;
@@ -433,7 +436,7 @@ async function checkStudioSubgraph(): Promise<CheckResult> {
     label: 'Graph Studio subgraph reachable',
     ok: !!t.value,
     detail: t.value ? `at Sepolia block ${t.value.block}, ${t.value.poolCount} pools indexed${t.value.poolCount === 0 ? ' (Sepolia CommunityPool dormant)' : ''}` : t.error ?? 'unknown',
-    link: STUDIO_PLAYGROUND,
+    link: SEPOLIA_PLAYGROUND,
     latencyMs: t.latencyMs,
   };
 }
@@ -520,7 +523,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         vault: `https://hashscan.io/testnet/contract/${VAULT}`,
         auditTopic: `https://hashscan.io/testnet/topic/${AUDIT_TOPIC}`,
         registryTopic: `https://hashscan.io/testnet/topic/${REGISTRY_TOPIC}`,
-        studioSubgraph: STUDIO_PLAYGROUND,
+        // Two playgrounds, same schema, two chains — the parity proof.
+        subgraphPlaygrounds: {
+          sepolia: {
+            label: 'Sepolia via The Graph Studio (real Graph Protocol subgraph)',
+            url: SEPOLIA_PLAYGROUND,
+          },
+          hedera: {
+            label: 'Hedera via our @zkward/hedera-graphql-adapter (Apollo Sandbox)',
+            url: HEDERA_PLAYGROUND,
+          },
+        },
         adapterPackage: `https://www.npmjs.com/package/${NPM_PACKAGE}`,
         pullRequests: {
           hederaHarness: 'https://github.com/hedera-dev/hedera-harness/pull/43',
