@@ -655,6 +655,14 @@ export async function GET(req: NextRequest) {
       suiAutoHedgeDisable: envFlag('SUI_AUTO_HEDGE_DISABLE'),
       profitLockDisable: envFlag('PROFIT_LOCK_DISABLE'),
     },
+    // Rate-limiter backend — 'upstash' means globally consistent across all
+    // Vercel instances; 'none' means in-memory only (per-instance, misses
+    // cross-lambda abuse). Under demo/judging load with many warm lambdas,
+    // 'none' can leak ~N× the intended limit. If this reads 'none' in prod,
+    // set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN.
+    security: {
+      rateLimiterBackend: readLimiter.stats().distributed.backend,
+    },
   };
 
   if (overall !== 'ok') {
