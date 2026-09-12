@@ -24,6 +24,22 @@ const AUDIT_TOPIC = '0.0.10393879';
 const REGISTRY_TOPIC = '0.0.10401316';
 const NPM_PACKAGE = '@zkward/hedera-graphql-adapter';
 const STUDIO_ENDPOINT = 'https://api.studio.thegraph.com/query/1758819/zkward/v0.2.0';
+// Public playground URL — pre-populates a query showing _meta.deployment
+// (IPFS hash proof), pools with derived transactions, and members. Judges
+// click through to a page with the query loaded — press Play to run.
+// Alternative to thegraph.com/studio/subgraph/zkward (owner-only, 404s
+// for non-owners).
+const STUDIO_PLAYGROUND = `${STUDIO_ENDPOINT}/graphql?query=${encodeURIComponent(
+  `{
+  _meta { deployment block { number } hasIndexingErrors }
+  pools { id network totalNav totalShares memberCount
+    transactions(first: 5, orderBy: timestamp, orderDirection: desc) {
+      type actor amount timestamp
+    }
+  }
+  members { address currentShares totalDeposited }
+}`,
+)}`;
 
 interface CheckResult {
   id: string;
@@ -410,7 +426,7 @@ async function checkStudioSubgraph(): Promise<CheckResult> {
     label: 'Graph Studio subgraph reachable',
     ok: !!t.value,
     detail: t.value ? `at Sepolia block ${t.value.block}, ${t.value.poolCount} pools indexed${t.value.poolCount === 0 ? ' (Sepolia CommunityPool dormant)' : ''}` : t.error ?? 'unknown',
-    link: 'https://thegraph.com/studio/subgraph/zkward',
+    link: STUDIO_PLAYGROUND,
     latencyMs: t.latencyMs,
   };
 }
@@ -497,7 +513,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         vault: `https://hashscan.io/testnet/contract/${VAULT}`,
         auditTopic: `https://hashscan.io/testnet/topic/${AUDIT_TOPIC}`,
         registryTopic: `https://hashscan.io/testnet/topic/${REGISTRY_TOPIC}`,
-        studioSubgraph: 'https://thegraph.com/studio/subgraph/zkward',
+        studioSubgraph: STUDIO_PLAYGROUND,
         adapterPackage: `https://www.npmjs.com/package/${NPM_PACKAGE}`,
         pullRequests: {
           hederaHarness: 'https://github.com/hedera-dev/hedera-harness/pull/43',
