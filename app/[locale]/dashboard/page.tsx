@@ -22,6 +22,8 @@ import {
   UserCog,
 } from 'lucide-react';
 import { MobileTabBar } from '@/components/dashboard/MobileTabBar';
+import { WalletAvatar } from '@/components/ui/WalletAvatar';
+import { useUserSession } from '@/lib/hooks/useUserSession';
 import { useContractAddresses } from '@/lib/contracts/hooks';
 import { usePositions } from '@/contexts/PositionsContext';
 import { usePortfolioAction, type CustomActionPayload } from '@/contexts/AIDecisionsContext';
@@ -226,9 +228,19 @@ const platformItems: NavItem[] = [
 type NavId = (typeof navItems)[number]['id'] | (typeof platformItems)[number]['id'];
 
 export default function DashboardPage() {
-  // EVM wallet state
-  const { address: evmAddress, isConnected: evmConnected } = useAccount();
-  const { data: balance } = useBalance({ address: evmAddress });
+  // Unified session — Privy embedded wallet first, then anything wagmi
+  // reports as a fallback. Guarantees the sidebar avatar/address/balance
+  // matches the Profile tab AND the community leaderboard (all read from
+  // useUserSession + useWalletProfile). Fixes the bug where wagmi's
+  // useAccount would return an injected MetaMask address that drifted
+  // from the Privy embedded wallet the user actually signed in with.
+  const session = useUserSession();
+
+  // Wagmi injected fallback — kept for downstream code that needs raw
+  // wagmi address (e.g. useWriteContract in HederaVaultActions). NOT
+  // used for the sidebar display; that's session.address.
+  const { address: evmAddress } = useAccount();
+  useBalance({ address: evmAddress }); // side-effect: keeps wagmi cache warm
 
   // SUI wallet state
   const sui = useSui();
@@ -236,13 +248,14 @@ export default function DashboardPage() {
   const suiConnected = sui.isConnected;
   const suiBalance = sui.balance;
 
-  // Combined wallet state - prefer SUI if connected, otherwise EVM
-  const isConnected = suiConnected || evmConnected;
-  const address = suiAddress || evmAddress?.toString();
+  // Primary display address — SUI wins if connected (SUI-native pages),
+  // otherwise the unified Privy/wagmi session.
+  const isConnected = suiConnected || session.authenticated || !!evmAddress;
+  const address = suiAddress || session.address || evmAddress?.toString();
   const displayBalance = suiConnected
     ? `${suiBalance} SUI`
-    : balance
-      ? `${(Number(balance.value) / 10 ** balance.decimals).toFixed(4)} ${balance.symbol}`
+    : session.balances.ready
+      ? `${session.balances.hbarHuman.toFixed(4)} HBAR`
       : '';
 
   const contractAddresses = useContractAddresses();
@@ -492,31 +505,16 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* Wallet Info */}
+          {/* Wallet Info — mobile drawer */}
           <div className="p-4 border-b border-black/5">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center ${suiConnected ? 'bg-[#4DA2FF]' : 'bg-ios-blue'}`}
-              >
-                <span className="text-white text-sm font-bold">
-                  {suiConnected
-                    ? 'SUI'
-                    : displayAddress
-                      ? displayAddress.slice(2, 4).toUpperCase()
-                      : 'ZK'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-label-primary truncate">
-                  {displayAddress
-                    ? `${displayAddress.slice(0, 6)}...${displayAddress.slice(-4)}`
-                    : 'Not Connected'}
-                </p>
-                <p className="text-xs text-label-quaternary">
-                  {isConnected ? displayBalance : 'Connect Wallet'}
-                </p>
-              </div>
-            </div>
+            <SidebarWalletCard
+              address={displayAddress}
+              displayName={session.displayName}
+              isSui={suiConnected}
+              isConnected={isConnected}
+              subLabel={isConnected ? displayBalance : 'Connect Wallet'}
+              size={40}
+            />
           </div>
 
           {/* Mobile Nav */}
@@ -572,31 +570,16 @@ export default function DashboardPage() {
       <div className="flex pt-[52px]">
         {/* Desktop Sidebar - Hidden on mobile */}
         <aside className="hidden lg:flex w-64 h-[calc(100vh-52px)] sticky top-[52px] flex-col bg-white border-r border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          {/* Wallet Section */}
+          {/* Wallet Section — desktop */}
           <div className="p-5 border-b border-black/5">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center shadow-[0_4px_12px_rgba(0,105,217,0.3)] ${suiConnected ? 'bg-[#4DA2FF]' : 'bg-ios-blue'}`}
-              >
-                <span className="text-white text-[15px] font-semibold">
-                  {suiConnected
-                    ? 'SUI'
-                    : displayAddress
-                      ? displayAddress.slice(2, 4).toUpperCase()
-                      : 'ZK'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-semibold text-label-primary truncate tracking-[-0.01em]">
-                  {displayAddress
-                    ? `${displayAddress.slice(0, 6)}...${displayAddress.slice(-4)}`
-                    : 'Not Connected'}
-                </p>
-                <p className="text-[13px] text-label-quaternary tracking-[-0.003em]">
-                  {isConnected ? displayBalance : 'Connect Wallet'}
-                </p>
-              </div>
-            </div>
+            <SidebarWalletCard
+              address={displayAddress}
+              displayName={session.displayName}
+              isSui={suiConnected}
+              isConnected={isConnected}
+              subLabel={isConnected ? displayBalance : 'Connect Wallet'}
+              size={48}
+            />
           </div>
 
           {/* Desktop Navigation */}
@@ -1111,5 +1094,54 @@ function Badge({
       )}
       {children}
     </span>
+  );
+}
+
+/**
+ * SidebarWalletCard — avatar + display name (or truncated address) + sub-label.
+ * Used by both mobile and desktop sidebars to render consistent identity.
+ * Same avatar seed / same name source as the community leaderboard and
+ * Profile tab — edit once, updates everywhere.
+ */
+function SidebarWalletCard({
+  address,
+  displayName,
+  isSui,
+  isConnected,
+  subLabel,
+  size,
+}: {
+  address: string;
+  displayName: string | null;
+  isSui: boolean;
+  isConnected: boolean;
+  subLabel: string;
+  size: number;
+}) {
+  const truncated = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'Not Connected';
+  const primary = displayName || truncated;
+  const textSize = size >= 48 ? 'text-[15px]' : 'text-sm';
+  const subSize = size >= 48 ? 'text-[13px]' : 'text-xs';
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      {isSui ? (
+        <div
+          className="rounded-full flex items-center justify-center bg-[#4DA2FF] flex-shrink-0"
+          style={{ width: size, height: size }}
+        >
+          <span className={`text-white font-semibold ${textSize}`}>SUI</span>
+        </div>
+      ) : (
+        <WalletAvatar address={address || null} name={displayName} size={size} />
+      )}
+      <div className="flex-1 min-w-0">
+        <p className={`${textSize} font-semibold text-label-primary truncate tracking-[-0.01em]`}>
+          {isConnected ? primary : 'Not Connected'}
+        </p>
+        <p className={`${subSize} text-label-quaternary tracking-[-0.003em] truncate`}>
+          {subLabel}
+        </p>
+      </div>
+    </div>
   );
 }
