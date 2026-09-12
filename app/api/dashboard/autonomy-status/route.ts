@@ -180,7 +180,7 @@ export async function GET() {
     return NextResponse.json(body, {
       headers: {
         // Same cadence as cron heartbeats — no reason to fetch fresher.
-        'Cache-Control': 's-maxage=30, stale-while-revalidate=60',
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
       },
     });
   } catch (e) {

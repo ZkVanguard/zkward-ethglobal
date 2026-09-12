@@ -105,6 +105,9 @@ export async function GET(): Promise<NextResponse> {
       agents,
       spec: 'HCS-14 (Hedera Consensus Service — agent identity & discovery)',
       readMethod: 'Mirror Node REST (public, no auth)',
+    }, {
+      // Agent registrations are rare (publish-once); 5min edge cache is plenty.
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (e) {
     logger.warn('[agent-registry] fetch failed', {

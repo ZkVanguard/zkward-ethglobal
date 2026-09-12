@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { safeErrorResponse } from '@/lib/security/safe-error';
+import { mutationLimiter } from '@/lib/security/rate-limiter';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
 export async function POST(request: NextRequest) {
+  // Gasless server-side tx — burns operator gas per call. mutationLimiter = 20/min/IP.
+  const limited = mutationLimiter.check(request);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { proofHash, merkleRoot, securityLevel, signature: _signature, address } = body;

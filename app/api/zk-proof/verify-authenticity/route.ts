@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { safeErrorResponse } from '@/lib/security/safe-error';
 import { logger } from '@/lib/utils/logger';
+import { heavyLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,11 @@ const ZK_API_URL = process.env.ZK_API_URL;
  * 4. Verifiable test proof generation
  * 5. Source code references
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  // Kicks the Python STARK server + runs a test proof. heavyLimiter = 10/min/IP.
+  const limited = heavyLimiter.check(request);
+  if (limited) return limited;
+
   try {
     // If no backend URL provided (e.g. during static export), skip live checks
     if (!ZK_API_URL) {

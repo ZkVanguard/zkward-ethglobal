@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
 import { createHederaGraphQLAdapter } from '@zkward/hedera-graphql-adapter';
+import { readLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,9 @@ export async function OPTIONS(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = readLimiter.check(request);
+  if (limited) return NextResponse.json(await limited.json(), { status: 429, headers: CORS_HEADERS });
+
   let body: GraphQLBody;
   try {
     body = (await request.json()) as GraphQLBody;

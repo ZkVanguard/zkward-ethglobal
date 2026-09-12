@@ -29,6 +29,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { envFlag } from '@/lib/utils/env-flag';
+import { createRateLimiter } from '@/lib/security/rate-limiter';
+
+// 5/min/IP — this writes to HCS and consumes real HBAR from the operator wallet.
+// Even a modest abuse loop would drain the operator balance in minutes.
+const attestLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000, prefix: 'rl:attest-hedges' });
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,7 +69,10 @@ function badRequest(reason: string): NextResponse<AttestResponse> {
   return NextResponse.json({ attested: false, reason }, { status: 400 });
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<AttestResponse>> {
+export async function POST(request: NextRequest): Promise<NextResponse<AttestResponse | { error: string; retryAfter?: number }>> {
+  const limited = attestLimiter.check(request);
+  if (limited) return limited as NextResponse<{ error: string; retryAfter?: number }>;
+
   let body: Body;
   try {
     body = (await request.json()) as Body;

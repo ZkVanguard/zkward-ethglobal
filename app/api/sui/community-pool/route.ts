@@ -82,7 +82,9 @@ function requireValidNetwork(network: NetworkType): NextResponse | null {
 function cachedJsonResponse(data: unknown, cdnTtlSeconds: number = 30) {
   return NextResponse.json(data, {
     headers: {
-      'Cache-Control': `s-maxage=${cdnTtlSeconds}, stale-while-revalidate=${cdnTtlSeconds * 2}`,
+      // 'public' prefix is required for Vercel Edge to CDN-cache. Without it,
+      // Vercel serves 'max-age=0, must-revalidate' and every request hits origin.
+      'Cache-Control': `public, s-maxage=${cdnTtlSeconds}, stale-while-revalidate=${cdnTtlSeconds * 2}`,
     },
   });
 }
