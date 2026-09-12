@@ -47,12 +47,16 @@ interface MasterCronResult {
 }
 
 /**
- * Base URL for sub-cron fetches. Vercel's own deployment URL avoids the
- * DNS/edge round-trip through the public domain and works even if the
- * custom domain has a temporary issue.
+ * Base URL for sub-cron fetches. MUST be the production alias, NOT
+ * VERCEL_URL — deployment URLs (foo-abc123.vercel.app) have deployment
+ * protection enabled by default and require Vercel SSO, so an internal
+ * fetch against them returns 401 regardless of CRON_SECRET.
+ *
+ * Override with CRON_SUB_BASE_URL for staging / preview environments.
  */
 function subCronBaseUrl(): string {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  const override = process.env.CRON_SUB_BASE_URL?.trim();
+  if (override) return override;
   if (process.env.VERCEL) return 'https://www.zkward.com';
   return process.env.NEXTAUTH_URL || 'http://localhost:3000';
 }
