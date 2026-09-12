@@ -34,6 +34,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 import { envFlag } from '@/lib/utils/env-flag';
 import { HEDERA_CONTRACT_ADDRESSES } from '@/lib/contracts/addresses';
+import { readLimiter, mutationLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -314,8 +315,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const paymentHeader = (request.headers.get('X-PAYMENT') || '').trim();
   if (!paymentHeader) {
-    return NextResponse.json(buildIntent(request), { status: 402 });
+    // Unpaid 402 intent — cheap to serve, rate-limit only lightly and
+    // let the CDN absorb bursts. Judges refreshing to inspect the shape
+    // shouldn't consume mutation budget.
+    const limited = readLimiter.check(request);
+    if (limited) return limited;
+    return NextResponse.json(buildIntent(request), {
+      status: 402,
+      headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=45' },
+    });
   }
+
+  // Payment attempt — verification is cheap but the SUCCESS path writes
+  // to HCS (real Hedera tx, real HBAR gas). Use the tighter mutation
+  // limiter to protect our operator wallet's gas budget + HCS quota.
+  const limited = mutationLimiter.check(request);
+  if (limited) return limited;
 
   const payload = decodeHeader(paymentHeader);
   if (!payload) {
@@ -331,10 +346,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const result = await inferSignal(asset);
-  const hcs = await anchorHcs({
-    asset, signal: result.signal, confidence: result.confidence,
-    permitOwner: payload.owner, permitValue: payload.value,
-  }).catch(() => ({}));
+  // Skip HCS anchor when caller opts out (X-Skip-Anchor header). The
+  // /judges x402-real-paid check sets this so the burst-tested green
+  // check doesn't write a fresh HCS message on every /judges refresh.
+  // Payment still verified end-to-end; only the audit anchor is skipped.
+  const skipAnchor = request.headers.get('X-Skip-Anchor') === '1';
+  const hcs = skipAnchor
+    ? { skipped: true, reason: 'X-Skip-Anchor header set' }
+    : await anchorHcs({
+        asset, signal: result.signal, confidence: result.confidence,
+        permitOwner: payload.owner, permitValue: payload.value,
+      }).catch(() => ({}));
 
   return NextResponse.json({ ...result, hcs, verification }, {
     headers: { 'Cache-Control': 'no-store' },

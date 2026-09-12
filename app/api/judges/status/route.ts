@@ -237,13 +237,19 @@ async function checkX402RealPaid(origin: string): Promise<CheckResult> {
       s: sig.s,
     };
     const xPayment = Buffer.from(JSON.stringify(payload)).toString('base64');
+    // X-Skip-Anchor tells the demo endpoint to skip the HCS write. We
+    // still verify the signature server-side — the check proves
+    // cryptographic settlement without spamming the HCS topic on every
+    // /judges refresh (which happens ~15× per burst without CDN cache).
+    // A separate HashScan link on the audit-topic row proves the topic
+    // is live independently.
     const r2 = await fetch(`${origin}/api/x402/permit-demo?asset=BTC`, {
-      headers: { 'X-PAYMENT': xPayment },
+      headers: { 'X-PAYMENT': xPayment, 'X-Skip-Anchor': '1' },
     });
     if (r2.status !== 200) throw new Error(`paid call got ${r2.status}, expected 200`);
     const j = (await r2.json()) as {
       verification?: { valid?: boolean; mode?: string; recovered?: string };
-      hcs?: { txId?: string; error?: string };
+      hcs?: { txId?: string; error?: string; skipped?: boolean };
       signal?: string;
     };
     if (j.verification?.mode !== 'zkward-eip2612') throw new Error(`mode was ${j.verification?.mode}, expected zkward-eip2612`);
@@ -251,17 +257,18 @@ async function checkX402RealPaid(origin: string): Promise<CheckResult> {
     if (j.verification?.recovered?.toLowerCase() !== wallet.address.toLowerCase()) {
       throw new Error('server-recovered signer does not match ephemeral wallet');
     }
-    return { hcsTxId: j.hcs?.txId, signer: wallet.address, signal: j.signal };
+    return { signer: wallet.address, signal: j.signal };
   });
   return {
     id: 'x402-real-paid',
     label: 'x402 real settlement — EIP-2612 permit verified server-side',
     ok: !!t.value,
     detail: t.value
-      ? `verified signer ${t.value.signer.slice(0, 10)}…, signal ${t.value.signal}, HCS ${t.value.hcsTxId ? 'anchored' : 'skipped'}`
+      ? `verified signer ${t.value.signer.slice(0, 10)}…, signal ${t.value.signal} (HCS anchor skipped for check — see row 2 for topic health)`
       : t.error ?? 'unknown',
-    evidence: t.value?.hcsTxId,
-    link: t.value?.hcsTxId ? `https://hashscan.io/testnet/transaction/${t.value.hcsTxId}` : undefined,
+    // Link to the demo script + endpoint so judges can run a full paid
+    // call themselves and see a real HCS receipt (bun run scripts/demo-x402-permit.ts).
+    link: `${origin}/api/x402/permit-demo?asset=BTC`,
     latencyMs: t.latencyMs,
   };
 }
@@ -522,6 +529,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         },
       },
     },
-    { status: ok ? 200 : 207, headers: { 'Cache-Control': 'no-store' } },
+    {
+      status: ok ? 200 : 207,
+      headers: {
+        // Vercel edge caches the aggregated response for 20s and serves
+        // stale for another 40s while revalidating. Judges hitting
+        // refresh get near-instant responses without cascading 13 sub-
+        // requests to our own routes (which include a real HCS write in
+        // x402-real-paid). Under burst-load this reduces amplified cost
+        // by ~15x while keeping the visible state fresh within a
+        // reasonable window. Failed responses (207) skip cache so the
+        // next hit re-runs immediately.
+        'Cache-Control': ok
+          ? 'public, s-maxage=20, stale-while-revalidate=40'
+          : 'no-store',
+      },
+    },
   );
 }

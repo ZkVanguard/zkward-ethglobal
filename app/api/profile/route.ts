@@ -15,22 +15,38 @@ import {
   setWalletProfile,
   normalizeAddress,
 } from '@/lib/db/wallet-profiles';
+import { readLimiter, mutationLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const limited = readLimiter.check(request);
+  if (limited) return limited;
   const url = new URL(request.url);
   const raw = (url.searchParams.get('addresses') || '').trim();
-  if (!raw) return NextResponse.json({ profiles: {} });
+  if (!raw) {
+    return NextResponse.json({ profiles: {} }, {
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+    });
+  }
   const addrs = raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 100);
   const profiles = await getWalletProfiles(addrs);
-  return NextResponse.json({ profiles });
+  // CDN caches profile lookups for 30s — leaderboard enrichment on
+  // /api/community-pool?action=leaderboard hits this every 60s per
+  // client. Cache lets one origin fetch fan out to N viewers.
+  return NextResponse.json({ profiles }, {
+    headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+  });
 }
 
 interface Body { address?: string; displayName?: string }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Writes are DB-bound and can spam-fill wallet_profiles otherwise.
+  // Mutation limiter: 20 req/min per IP.
+  const limited = mutationLimiter.check(request);
+  if (limited) return limited;
   let body: Body = {};
   try { body = (await request.json()) as Body; } catch { /* default */ }
   if (!body.address || !body.displayName) {
