@@ -163,6 +163,7 @@ async function main() {
     reasoning?: string;
     source?: string;
     hcs?: { explorerUrl?: string; error?: string };
+    settlement?: { tx?: string; permitTx?: string; explorerUrl?: string; amount?: string; error?: string; skipped?: boolean; reason?: string };
   };
   if (r2.status !== 200) {
     line('      ✗ FAILED');
@@ -181,6 +182,18 @@ async function main() {
   line(`  confidence: ${resp.confidence}%`);
   line(`  source    : ${resp.source}`);
   line(`  reasoning : ${resp.reasoning?.slice(0, 120)}…`);
+  line(`\n─── settlement ─────────────────────────────────────────────────`);
+  if (resp.settlement?.tx) {
+    line(`  status    : ✓ redeemed on-chain`);
+    line(`  amount    : ${resp.settlement.amount} micros`);
+    line(`  permit    : ${resp.settlement.permitTx}`);
+    line(`  transfer  : ${resp.settlement.tx}`);
+    line(`  explorer  : ${resp.settlement.explorerUrl}`);
+  } else if (resp.settlement?.skipped) {
+    line(`  status    : skipped (${resp.settlement.reason})`);
+  } else {
+    line(`  status    : ✗ NOT settled — ${resp.settlement?.error ?? 'unknown'}`);
+  }
   if (resp.hcs?.explorerUrl) {
     line(`\n─── HCS audit ──────────────────────────────────────────────────`);
     line(`  ${resp.hcs.explorerUrl}`);

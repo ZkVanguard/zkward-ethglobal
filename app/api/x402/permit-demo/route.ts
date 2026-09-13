@@ -231,6 +231,58 @@ async function verifyPermit(payload: PermitPayload): Promise<VerifyResult> {
   };
 }
 
+// ─── On-chain settlement (permit + transferFrom) ──────────────────────────
+
+type SettlementResult =
+  | { tx: string; permitTx: string; explorerUrl: string; amount: string }
+  | { skipped: true; reason: string }
+  | { error: string };
+
+async function settlePermit(payload: PermitPayload): Promise<SettlementResult> {
+  const operatorKey = (process.env.HEDERA_OPERATOR_KEY || '').trim();
+  if (!operatorKey) return { error: 'HEDERA_OPERATOR_KEY not set — settlement disabled' };
+
+  const rpcUrl = (process.env.HEDERA_TESTNET_RPC_URL || 'https://testnet.hashio.io/api').trim();
+  const { ethers } = await import('ethers');
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const wallet = new ethers.Wallet(operatorKey, provider);
+
+  // Sanity: the operator wallet must equal the spender the client signed for,
+  // otherwise transferFrom() will revert with ERC20InsufficientAllowance.
+  if (wallet.address.toLowerCase() !== payload.spender.toLowerCase()) {
+    return { error: `operator ${wallet.address} != permit spender ${payload.spender} — cannot redeem` };
+  }
+
+  const abi = [
+    'function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external',
+    'function transferFrom(address from, address to, uint256 amount) external returns (bool)',
+  ];
+  const token = new ethers.Contract(TOKEN_ADDRESS, abi, wallet);
+  const overrides = {
+    gasLimit: 200_000,
+    maxFeePerGas: ethers.parseUnits('20000', 'gwei'),
+    maxPriorityFeePerGas: ethers.parseUnits('1', 'gwei'),
+    type: 2 as const,
+  };
+
+  const permitTx = await token.permit(
+    payload.owner, payload.spender, payload.value, payload.deadline,
+    payload.v, payload.r, payload.s, overrides,
+  );
+  await permitTx.wait(1);
+
+  const xfer = await token.transferFrom(payload.owner, payload.spender, payload.value, overrides);
+  const receipt = await xfer.wait(1);
+  const txHash = receipt?.hash ?? xfer.hash;
+
+  return {
+    tx: txHash,
+    permitTx: permitTx.hash,
+    explorerUrl: `https://hashscan.io/testnet/transaction/${txHash}`,
+    amount: payload.value,
+  };
+}
+
 // ─── Signal inference (mirrors signal-quality/route.ts) ────────────────────
 
 interface SignalResponse {
@@ -345,20 +397,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ...buildIntent(request), verification }, { status: 402 });
   }
 
+  // Redeem the permit on-chain: call permit() then transferFrom() so
+  // the signed authorization becomes a real USDC movement. Best-effort —
+  // verification already proved the payment intent; a settlement failure
+  // (RPC hiccup, replayed nonce, gas) surfaces as settlement.error but
+  // the caller still gets the signal they paid for.
+  // Skip on X-Skip-Settle so /judges bursts don't burn HBAR on every refresh.
+  const skipSettle = request.headers.get('X-Skip-Settle') === '1';
+  const settlement = skipSettle
+    ? { skipped: true as const, reason: 'X-Skip-Settle header set' }
+    : await settlePermit(payload).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+
   const result = await inferSignal(asset);
-  // Skip HCS anchor when caller opts out (X-Skip-Anchor header). The
-  // /judges x402-real-paid check sets this so the burst-tested green
-  // check doesn't write a fresh HCS message on every /judges refresh.
-  // Payment still verified end-to-end; only the audit anchor is skipped.
   const skipAnchor = request.headers.get('X-Skip-Anchor') === '1';
   const hcs = skipAnchor
     ? { skipped: true, reason: 'X-Skip-Anchor header set' }
     : await anchorHcs({
         asset, signal: result.signal, confidence: result.confidence,
         permitOwner: payload.owner, permitValue: payload.value,
+        settlementTx: 'tx' in settlement ? settlement.tx : undefined,
       }).catch(() => ({}));
 
-  return NextResponse.json({ ...result, hcs, verification }, {
+  return NextResponse.json({ ...result, hcs, verification, settlement }, {
     headers: { 'Cache-Control': 'no-store' },
   });
 }
