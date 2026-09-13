@@ -33,6 +33,10 @@ export interface PrivySender {
     title?: string;
     /** Longer description shown alongside the tx details. */
     description?: string;
+    /** Hedera Hashio rejects unset fees with 400 → "Missing or invalid parameters". */
+    gas?: bigint;
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
   }) => Promise<{ hash: `0x${string}` }>;
 }
 

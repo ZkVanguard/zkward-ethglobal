@@ -41,6 +41,9 @@ export function usePrivySenderReal(): PrivySender | null {
         data: tx.data,
         value: tx.value,
         chainId: tx.chainId,
+        gasLimit: tx.gas,
+        maxFeePerGas: tx.maxFeePerGas,
+        maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
       },
       // uiOptions lets Privy's modal show a human-readable description
       // instead of just the raw to-address + fee. transactionInfo.title

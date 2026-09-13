@@ -42,6 +42,15 @@ const SHARES_DECIMALS = 6;
 const HEDERA_ACCENT = '#00A79F';
 const ACCENT = '#0069D9';
 
+// Hashio (Hedera EVM relay) rejects transactions without explicit fees
+// with 400 → Privy surfaces "Missing or invalid parameters". Match the
+// values the faucet uses (app/api/hedera/faucet/route.ts).
+const HASHIO_MAX_FEE_PER_GAS = 20_000_000_000_000n; // 20000 gwei
+const HASHIO_PRIORITY_FEE = 1_000_000_000n;         // 1 gwei
+const HASHIO_GAS_APPROVE = 200_000n;
+const HASHIO_GAS_DEPOSIT = 400_000n;
+const HASHIO_GAS_WITHDRAW = 400_000n;
+
 // SimpleUsdcVaultV2 ABI subset — deposit / depositWithPermit / withdraw / reads.
 const VAULT_ABI = [
   {
@@ -347,6 +356,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
               chainId: HEDERA_TESTNET_ID,
               title: `Approve ${amount} USDC`,
               description: `One-time approval so ZkWard's Hedera pool can pull USDC for future deposits. Approving unlimited USDC to ${vault.slice(0, 8)}…${vault.slice(-4)}.`,
+              gas: HASHIO_GAS_APPROVE,
+              maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+              maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
             })).hash
           : await writeContractAsync({
               address: usdc,
@@ -354,6 +366,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
               functionName: 'approve',
               args: [vault, APPROVE_AMOUNT],
               chainId: HEDERA_TESTNET_ID,
+              gas: HASHIO_GAS_APPROVE,
+              maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+              maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
             });
         setPendingHash(approveHash);
         await waitForTx(approveHash);
@@ -373,6 +388,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             chainId: HEDERA_TESTNET_ID,
             title: `Deposit ${amount} USDC into ZkWard`,
             description: `Deposits ${amount} USDC into the Hedera community pool. You receive shares proportional to the pool's current NAV.`,
+            gas: HASHIO_GAS_DEPOSIT,
+            maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+            maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
           })).hash
         : await writeContractAsync({
             address: vault,
@@ -380,6 +398,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             functionName: 'deposit',
             args: [amountWei],
             chainId: HEDERA_TESTNET_ID,
+            gas: HASHIO_GAS_DEPOSIT,
+            maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+            maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
           });
       setPendingHash(depositHash);
     } catch (e) {
@@ -413,6 +434,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             chainId: HEDERA_TESTNET_ID,
             title: `Withdraw ${amount} shares from ZkWard`,
             description: `Burns ${amount} pool shares and returns the proportional USDC to your wallet.`,
+            gas: HASHIO_GAS_WITHDRAW,
+            maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+            maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
           })).hash
         : await writeContractAsync({
             address: vault,
@@ -420,6 +444,9 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
             functionName: 'withdraw',
             args: [sharesWei],
             chainId: HEDERA_TESTNET_ID,
+            gas: HASHIO_GAS_WITHDRAW,
+            maxFeePerGas: HASHIO_MAX_FEE_PER_GAS,
+            maxPriorityFeePerGas: HASHIO_PRIORITY_FEE,
           });
       setPendingHash(hash);
     } catch (e) {
