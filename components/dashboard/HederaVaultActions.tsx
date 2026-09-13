@@ -314,9 +314,26 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
           setStatus('error');
           return;
         }
-        // Wait a beat for the HBAR credit to appear in the RPC's view.
-        await new Promise((res) => setTimeout(res, 2500));
-        await refetchHbarBalance();
+        // Poll until Hashio's read layer sees the funded account. Faucet
+        // already awaited wait(1), so consensus has the account — but
+        // Mirror Node (which backs Hashio reads) lags 3-8s after finality.
+        // Without polling here, the next tx signs against an address the
+        // RPC still 404s on: "Requested resource not found. address '0x...'".
+        const POLL_INTERVAL_MS = 1500;
+        const POLL_TIMEOUT_MS = 20_000;
+        const startedAt = Date.now();
+        let visible = false;
+        while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
+          await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
+          const res = await refetchHbarBalance();
+          const v = (res.data?.value as bigint | undefined) ?? 0n;
+          if (v >= HBAR_MIN_WEI) { visible = true; break; }
+        }
+        if (!visible) {
+          setError('HBAR arrived but Hedera Mirror Node hasn\'t picked it up yet. Please try Deposit again in ~10 seconds.');
+          setStatus('error');
+          return;
+        }
       } catch (e) {
         setError(`Couldn't auto-fund HBAR: ${e instanceof Error ? e.message : String(e)}`);
         setStatus('error');
