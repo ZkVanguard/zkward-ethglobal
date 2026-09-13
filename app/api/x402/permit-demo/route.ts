@@ -38,7 +38,7 @@ import { readLimiter, mutationLimiter } from '@/lib/security/rate-limiter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 15;
+export const maxDuration = 60;
 
 const CHAIN_ID = 296;
 const TOKEN_ADDRESS = HEDERA_CONTRACT_ADDRESSES.testnet.usdtToken;
@@ -397,18 +397,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ...buildIntent(request), verification }, { status: 402 });
   }
 
-  // Redeem the permit on-chain: call permit() then transferFrom() so
-  // the signed authorization becomes a real USDC movement. Best-effort —
-  // verification already proved the payment intent; a settlement failure
-  // (RPC hiccup, replayed nonce, gas) surfaces as settlement.error but
-  // the caller still gets the signal they paid for.
+  // Redeem the permit on-chain in parallel with signal inference — both
+  // are independent and each takes several seconds against Hedera Hashio.
+  // Best-effort: settlement failure still returns 200 + signal since the
+  // caller already authorized payment.
   // Skip on X-Skip-Settle so /judges bursts don't burn HBAR on every refresh.
   const skipSettle = request.headers.get('X-Skip-Settle') === '1';
-  const settlement = skipSettle
-    ? { skipped: true as const, reason: 'X-Skip-Settle header set' }
-    : await settlePermit(payload).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
-
-  const result = await inferSignal(asset);
+  const settlementPromise: Promise<SettlementResult> = skipSettle
+    ? Promise.resolve({ skipped: true as const, reason: 'X-Skip-Settle header set' })
+    : settlePermit(payload).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+  const [settlement, result] = await Promise.all([settlementPromise, inferSignal(asset)]);
   const skipAnchor = request.headers.get('X-Skip-Anchor') === '1';
   const hcs = skipAnchor
     ? { skipped: true, reason: 'X-Skip-Anchor header set' }
