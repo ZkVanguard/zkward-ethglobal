@@ -43,13 +43,16 @@ const HEDERA_ACCENT = '#00A79F';
 const ACCENT = '#0069D9';
 
 // Hashio (Hedera EVM relay) rejects transactions without explicit fees
-// with 400 → Privy surfaces "Missing or invalid parameters". Match the
-// values the faucet uses (app/api/hedera/faucet/route.ts).
-const HASHIO_MAX_FEE_PER_GAS = 20_000_000_000_000n; // 20000 gwei
-const HASHIO_PRIORITY_FEE = 1_000_000_000n;         // 1 gwei
-const HASHIO_GAS_APPROVE = 200_000n;
-const HASHIO_GAS_DEPOSIT = 400_000n;
-const HASHIO_GAS_WITHDRAW = 400_000n;
+// with 400 → Privy surfaces "Missing or invalid parameters".
+// Fees must be sized against the *user's* HBAR balance, not the operator's:
+// Hashio reserves maxFeePerGas × gas up front, so a fresh wallet with only
+// the faucet's 1 HBAR drip cannot cover big reservations. Hedera's actual
+// base fee floats around ~700 gwei; 1500 gives comfortable headroom.
+const HASHIO_MAX_FEE_PER_GAS = 1_500_000_000_000n; // 1500 gwei
+const HASHIO_PRIORITY_FEE = 100_000_000_000n;      // 100 gwei (Hedera ignores tip)
+const HASHIO_GAS_APPROVE = 100_000n;   // ~0.15 HBAR reservation
+const HASHIO_GAS_DEPOSIT = 300_000n;   // ~0.45 HBAR reservation
+const HASHIO_GAS_WITHDRAW = 300_000n;  // ~0.45 HBAR reservation
 
 // SimpleUsdcVaultV2 ABI subset — deposit / depositWithPermit / withdraw / reads.
 const VAULT_ABI = [
