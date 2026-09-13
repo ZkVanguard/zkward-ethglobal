@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { parseUnits, formatUnits, erc20Abi, encodeFunctionData } from 'viem';
 import {
   useAccount,
+  useBalance,
   useChainId,
   useReadContract,
   useWriteContract,
@@ -146,7 +147,7 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
 
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
-  const [status, setStatus] = useState<'idle' | 'switching' | 'approving' | 'depositing' | 'withdrawing' | 'complete' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'switching' | 'funding-gas' | 'approving' | 'depositing' | 'withdrawing' | 'complete' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [pendingHash, setPendingHash] = useState<`0x${string}` | null>(null);
   // Keep the last successful tx hash visible after confirmation so users can
@@ -197,6 +198,16 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
     abi: erc20Abi,
     functionName: 'allowance',
     args: address ? [address, vault] : undefined,
+    query: { enabled: !!address },
+  });
+
+  // Native HBAR balance — used to detect fresh Privy embedded wallets that
+  // ship with 0 HBAR. Without HBAR, gas estimation at Hashio returns 400
+  // and Privy surfaces the opaque 'Missing or invalid parameters' error.
+  // onDeposit auto-drips the faucet when this reads below the threshold.
+  const { data: hbarBalance, refetch: refetchHbarBalance } = useBalance({
+    address,
+    chainId: HEDERA_TESTNET_ID,
     query: { enabled: !!address },
   });
 
@@ -268,6 +279,41 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
 
     const okChain = await ensureHederaChain();
     if (!okChain) return;
+
+    // Pre-flight HBAR check. Fresh Privy embedded wallets ship with 0 HBAR,
+    // so the very first approve/deposit fails at Hashio's gas-estimate step
+    // with an opaque 'Missing or invalid parameters' error. Auto-drip the
+    // faucet so the user doesn't have to know about it. Threshold matches
+    // the faucet's own HBAR_MIN_WEI (0.5 HBAR).
+    const HBAR_MIN_WEI = 500_000_000_000_000_000n;
+    const hbarWei = (hbarBalance?.value as bigint | undefined) ?? 0n;
+    if (hbarWei < HBAR_MIN_WEI) {
+      setStatus('funding-gas');
+      try {
+        const r = await fetch('/api/hedera/faucet', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ address }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!r.ok || !j.ok) {
+          setError(
+            j.error?.includes('throttled')
+              ? 'HBAR needed for gas. Faucet is throttled — try again in a few minutes, or fund manually.'
+              : `Couldn't auto-fund HBAR for gas: ${j.error ?? `HTTP ${r.status}`}. Click Faucet to retry.`,
+          );
+          setStatus('error');
+          return;
+        }
+        // Wait a beat for the HBAR credit to appear in the RPC's view.
+        await new Promise((res) => setTimeout(res, 2500));
+        await refetchHbarBalance();
+      } catch (e) {
+        setError(`Couldn't auto-fund HBAR: ${e instanceof Error ? e.message : String(e)}`);
+        setStatus('error');
+        return;
+      }
+    }
 
     const amountWei = parseUnits(amount, USDC_DECIMALS);
     const need = amountWei;
@@ -341,7 +387,7 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
       setStatus('error');
       setPendingHash(null);
     }
-  }, [address, amount, allowance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance, isPrivySigner, privySender]);
+  }, [address, amount, allowance, hbarBalance, ensureHederaChain, usdc, vault, writeContractAsync, refetchAllowance, refetchHbarBalance, isPrivySigner, privySender]);
 
   const onWithdraw = useCallback(async () => {
     setError(null);
@@ -627,6 +673,7 @@ export function HederaVaultActions({ address: propAddress, onRefresh }: Props) {
                 {status === 'complete' && <Check className="w-4 h-4" />}
                 {status === 'idle' && <>{mode === 'deposit' ? 'Deposit' : 'Withdraw'}</>}
                 {status === 'switching' && 'Switching…'}
+                {status === 'funding-gas' && 'Funding HBAR…'}
                 {status === 'approving' && 'Approving…'}
                 {status === 'depositing' && 'Depositing…'}
                 {status === 'withdrawing' && 'Withdrawing…'}
